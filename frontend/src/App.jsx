@@ -626,8 +626,9 @@ function ProfilePage() {
     e.preventDefault()
     try {
       const formData = new FormData()
+      // Always send all fields to ensure updates work correctly
       Object.keys(editForm).forEach(key => {
-        if (editForm[key] !== profile[key]) {
+        if (editForm[key] !== undefined && editForm[key] !== null) {
           formData.append(key, editForm[key])
         }
       })

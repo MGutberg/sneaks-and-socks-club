@@ -7,14 +7,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
-const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'sneaks-and-socks-club-secret-key-2024';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'database.sqlite');
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
-const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '';
 
 // Helper function to save file locally
 function saveFileLocally(buffer, originalname) {
@@ -22,29 +20,8 @@ function saveFileLocally(buffer, originalname) {
   const filename = `${uuidv4()}${ext}`;
   const filepath = path.join(UPLOAD_DIR, filename);
   fs.writeFileSync(filepath, buffer);
+  console.log('Saved file:', filepath);
   return `/uploads/${filename}`;
-}
-
-// Helper function to upload image to ImgBB
-async function uploadToImgBB(fileBuffer, filename) {
-  if (!IMGBB_API_KEY) {
-    return null;
-  }
-  try {
-    const base64 = fileBuffer.toString('base64');
-    const response = await axios.post(
-      `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
-      { image: base64, name: filename },
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-    
-    if (response.data && response.data.data && response.data.data.url) {
-      return response.data.data.url;
-    }
-  } catch (error) {
-    console.error('ImgBB upload error:', error.message);
-  }
-  return null;
 }
 
 // Ensure directories exist
@@ -238,16 +215,9 @@ app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req
   
   let avatar = null;
   if (req.file) {
-    if (IMGBB_API_KEY) {
-      // Upload to ImgBB for permanent storage
-      avatar = await uploadToImgBB(req.file.buffer, req.file.originalname);
-      console.log('ImgBB result:', avatar);
-    }
-    if (!avatar) {
-      // Fallback to local storage
-      console.log('Using local storage fallback');
-      avatar = saveFileLocally(req.file.buffer, req.file.originalname);
-    }
+    console.log('File received:', req.file.originalname, req.file.size, 'bytes');
+    avatar = saveFileLocally(req.file.buffer, req.file.originalname);
+    console.log('Avatar saved as:', avatar);
   }
 
   if (avatar) {

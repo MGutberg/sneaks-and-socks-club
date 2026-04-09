@@ -14,8 +14,8 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Install dependencies for backend
-COPY package*.json ./
+# Copy backend package.json and install dependencies
+COPY backend/package*.json ./
 RUN npm install --production
 
 # Copy backend files
@@ -27,8 +27,7 @@ RUN mkdir -p /app/data /app/uploads
 # Copy built frontend
 COPY --from=frontend-builder /frontend/dist ./public
 
-# Expose ports
-EXPOSE 3000 5000
+# Expose port
+EXPOSE 5000
 
-# Start script
-CMD ["sh", "-c", "node server.js & sleep 5 && npx serve -s public -l 3000"]
+CMD ["node", "server.js"]

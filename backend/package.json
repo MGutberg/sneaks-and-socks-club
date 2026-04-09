@@ -1,11 +1,10 @@
 {
-  "name": "sneaks-and-socks-backend",
+  "name": "sneaks-and-socks-club",
   "version": "1.0.0",
-  "description": "Backend API for Sneaks and Socks Club",
+  "description": "Sneaks and Socks Club - Community Platform",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

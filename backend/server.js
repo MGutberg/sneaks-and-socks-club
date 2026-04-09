@@ -16,22 +16,26 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'database.sq
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '';
 
+// Helper function to save file locally
+function saveFileLocally(buffer, originalname) {
+  const ext = path.extname(originalname);
+  const filename = `${uuidv4()}${ext}`;
+  const filepath = path.join(UPLOAD_DIR, filename);
+  fs.writeFileSync(filepath, buffer);
+  return `/uploads/${filename}`;
+}
+
 // Helper function to upload image to ImgBB
 async function uploadToImgBB(fileBuffer, filename) {
   if (!IMGBB_API_KEY) {
-    // Fallback to local storage if no API key
     return null;
   }
   try {
     const base64 = fileBuffer.toString('base64');
-    const formData = new URLSearchParams();
-    formData.append('image', base64);
-    formData.append('name', filename);
-    
     const response = await axios.post(
       `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
-      formData.toString(),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      { image: base64, name: filename },
+      { headers: { 'Content-Type': 'application/json' } }
     );
     
     if (response.data && response.data.data && response.data.data.url) {
@@ -105,15 +109,11 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(UPLOAD_DIR));
 
-// Multer setup for image uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  }
+// Multer setup - use memory storage to get buffer for ImgBB upload
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
 
 // Auth middleware
 const authenticateToken = (req, res, next) => {
@@ -241,10 +241,12 @@ app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req
     if (IMGBB_API_KEY) {
       // Upload to ImgBB for permanent storage
       avatar = await uploadToImgBB(req.file.buffer, req.file.originalname);
+      console.log('ImgBB result:', avatar);
     }
     if (!avatar) {
       // Fallback to local storage
-      avatar = `/uploads/${req.file.filename}`;
+      console.log('Using local storage fallback');
+      avatar = saveFileLocally(req.file.buffer, req.file.originalname);
     }
   }
 

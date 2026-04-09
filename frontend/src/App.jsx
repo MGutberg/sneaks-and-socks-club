@@ -1,7 +1,15 @@
 import { useState, useEffect, createContext, useContext } from 'react'
 import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
-const API_URL = import.meta.env.VITE_API_URL || window.location.origin
+// Get API URL - properly handle undefined env var
+const getApiUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && envUrl !== 'undefined' && envUrl !== '') {
+    return envUrl;
+  }
+  return window.location.origin;
+};
+const API_URL = getApiUrl();
 
 // ============ AUTH CONTEXT ============
 const AuthContext = createContext(null)

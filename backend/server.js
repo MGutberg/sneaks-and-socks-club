@@ -7,12 +7,41 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'sneaks-and-socks-club-secret-key-2024';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'database.sqlite');
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
+const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '';
+
+// Helper function to upload image to ImgBB
+async function uploadToImgBB(fileBuffer, filename) {
+  if (!IMGBB_API_KEY) {
+    // Fallback to local storage if no API key
+    return null;
+  }
+  try {
+    const base64 = fileBuffer.toString('base64');
+    const formData = new URLSearchParams();
+    formData.append('image', base64);
+    formData.append('name', filename);
+    
+    const response = await axios.post(
+      `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
+      formData.toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+    
+    if (response.data && response.data.data && response.data.data.url) {
+      return response.data.data.url;
+    }
+  } catch (error) {
+    console.error('ImgBB upload error:', error.message);
+  }
+  return null;
+}
 
 // Ensure directories exist
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -200,13 +229,24 @@ app.get('/api/users/:id', authenticateToken, (req, res) => {
 });
 
 // Update profile
-app.put('/api/users/:id', authenticateToken, upload.single('avatar'), (req, res) => {
+app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req, res) => {
   if (req.user.id !== req.params.id) {
     return res.status(403).json({ error: 'Not authorized' });
   }
 
   const { display_name, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands } = req.body;
-  const avatar = req.file ? `/uploads/${req.file.filename}` : null;
+  
+  let avatar = null;
+  if (req.file) {
+    if (IMGBB_API_KEY) {
+      // Upload to ImgBB for permanent storage
+      avatar = await uploadToImgBB(req.file.buffer, req.file.originalname);
+    }
+    if (!avatar) {
+      // Fallback to local storage
+      avatar = `/uploads/${req.file.filename}`;
+    }
+  }
 
   if (avatar) {
     db.prepare(`UPDATE users SET 

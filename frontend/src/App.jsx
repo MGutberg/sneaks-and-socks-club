@@ -626,12 +626,14 @@ function ProfilePage() {
     e.preventDefault()
     try {
       const formData = new FormData()
-      // Always send all fields to ensure updates work correctly
-      Object.keys(editForm).forEach(key => {
+      // Only send editable text fields
+      const editableFields = ['display_name', 'bio', 'location', 'website', 'favorite_sneakers', 'favorite_socks', 'sneaker_size', 'sock_size', 'favorite_brands']
+      editableFields.forEach(key => {
         if (editForm[key] !== undefined && editForm[key] !== null) {
           formData.append(key, editForm[key])
         }
       })
+      // Only send avatar if a new file was selected
       if (editAvatar) {
         formData.append('avatar', editAvatar)
       }

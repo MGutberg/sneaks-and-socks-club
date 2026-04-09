@@ -11,6 +11,14 @@ const getApiUrl = () => {
 };
 const API_URL = getApiUrl();
 
+// Helper to get full image URL from relative path
+const getImageUrl = (path) => {
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  if (path.startsWith('/')) return `${API_URL}${path}`;
+  return `${API_URL}/${path}`;
+};
+
 // ============ AUTH CONTEXT ============
 const AuthContext = createContext(null)
 
@@ -130,7 +138,7 @@ function Navbar() {
               <Link to={`/profile/${user.id}`} className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-primary-900 flex items-center justify-center">
                   {user.avatar ? (
-                    <img src={user.avatar} className="w-full h-full rounded-full object-cover" />
+                    <img src={getImageUrl(user.avatar)} className="w-full h-full rounded-full object-cover" />
                   ) : (
                     <span className="text-primary-400 font-semibold">{user.username[0].toUpperCase()}</span>
                   )}
@@ -381,7 +389,7 @@ function Post({ post, onRefresh }) {
         <Link to={`/profile/${post.user_id}`}>
           <div className="w-10 h-10 rounded-full bg-primary-900 flex items-center justify-center flex-shrink-0">
             {post.avatar ? (
-              <img src={post.avatar} className="w-full h-full rounded-full object-cover" />
+              <img src={getImageUrl(post.avatar)} className="w-full h-full rounded-full object-cover" />
             ) : (
               <span className="text-primary-400 font-semibold">{post.username[0].toUpperCase()}</span>
             )}
@@ -401,7 +409,7 @@ function Post({ post, onRefresh }) {
           
           {post.image && (
             <img 
-              src={post.image} 
+              src={getImageUrl(post.image)} 
               alt="Post image" 
               className="mt-3 rounded-xl max-h-96 w-full object-cover"
             />
@@ -449,7 +457,7 @@ function Post({ post, onRefresh }) {
                     <Link to={`/profile/${comment.user_id}`}>
                       <div className="w-8 h-8 rounded-full bg-dark-100 flex items-center justify-center flex-shrink-0">
                         {comment.avatar ? (
-                          <img src={comment.avatar} className="w-full h-full rounded-full object-cover" />
+                          <img src={getImageUrl(comment.avatar)} className="w-full h-full rounded-full object-cover" />
                         ) : (
                           <span className="text-gray-400 text-sm font-semibold">{comment.username[0].toUpperCase()}</span>
                         )}
@@ -663,7 +671,7 @@ function ProfilePage() {
         <div className="flex items-start gap-4">
           <div className="w-24 h-24 rounded-full bg-primary-900 flex items-center justify-center overflow-hidden">
             {profile.avatar ? (
-              <img src={profile.avatar} className="w-full h-full rounded-full object-cover" />
+              <img src={getImageUrl(profile.avatar)} className="w-full h-full rounded-full object-cover" />
             ) : (
               <span className="text-primary-400 text-4xl font-bold">{profile.username[0].toUpperCase()}</span>
             )}
@@ -890,7 +898,7 @@ function MembersPage() {
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-primary-900 flex items-center justify-center">
                   {member.avatar ? (
-                    <img src={member.avatar} className="w-full h-full rounded-full object-cover" />
+                    <img src={getImageUrl(member.avatar)} className="w-full h-full rounded-full object-cover" />
                   ) : (
                     <span className="text-primary-400 font-bold">{member.username[0].toUpperCase()}</span>
                   )}

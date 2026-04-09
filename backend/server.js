@@ -213,40 +213,61 @@ app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req
 
   const { display_name, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands } = req.body;
   
-  let avatar = null;
+  let avatarPath = null;
   if (req.file) {
     console.log('File received:', req.file.originalname, req.file.size, 'bytes');
-    avatar = saveFileLocally(req.file.buffer, req.file.originalname);
-    console.log('Avatar saved as:', avatar);
+    avatarPath = saveFileLocally(req.file.buffer, req.file.originalname);
+    console.log('Avatar saved as:', avatarPath);
   }
 
-  if (avatar) {
-    db.prepare(`UPDATE users SET 
-      display_name = COALESCE(?, display_name), 
-      bio = COALESCE(?, bio), 
-      avatar = ?,
-      location = COALESCE(?, location),
-      website = COALESCE(?, website),
-      favorite_sneakers = COALESCE(?, favorite_sneakers),
-      favorite_socks = COALESCE(?, favorite_socks),
-      sneaker_size = COALESCE(?, sneaker_size),
-      sock_size = COALESCE(?, sock_size),
-      favorite_brands = COALESCE(?, favorite_brands)
-    WHERE id = ?`)
-      .run(display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, req.params.id);
-  } else {
-    db.prepare(`UPDATE users SET 
-      display_name = COALESCE(?, display_name), 
-      bio = COALESCE(?, bio),
-      location = COALESCE(?, location),
-      website = COALESCE(?, website),
-      favorite_sneakers = COALESCE(?, favorite_sneakers),
-      favorite_socks = COALESCE(?, favorite_socks),
-      sneaker_size = COALESCE(?, sneaker_size),
-      sock_size = COALESCE(?, sock_size),
-      favorite_brands = COALESCE(?, favorite_brands)
-    WHERE id = ?`)
-      .run(display_name, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, req.params.id);
+  // Build dynamic update - only update fields that are provided
+  const updates = [];
+  const values = [];
+  
+  if (display_name !== undefined && display_name !== null) {
+    updates.push('display_name = ?');
+    values.push(display_name);
+  }
+  if (bio !== undefined && bio !== null) {
+    updates.push('bio = ?');
+    values.push(bio);
+  }
+  if (avatarPath) {
+    updates.push('avatar = ?');
+    values.push(avatarPath);
+  }
+  if (location !== undefined && location !== null) {
+    updates.push('location = ?');
+    values.push(location);
+  }
+  if (website !== undefined && website !== null) {
+    updates.push('website = ?');
+    values.push(website);
+  }
+  if (favorite_sneakers !== undefined && favorite_sneakers !== null) {
+    updates.push('favorite_sneakers = ?');
+    values.push(favorite_sneakers);
+  }
+  if (favorite_socks !== undefined && favorite_socks !== null) {
+    updates.push('favorite_socks = ?');
+    values.push(favorite_socks);
+  }
+  if (sneaker_size !== undefined && sneaker_size !== null) {
+    updates.push('sneaker_size = ?');
+    values.push(sneaker_size);
+  }
+  if (sock_size !== undefined && sock_size !== null) {
+    updates.push('sock_size = ?');
+    values.push(sock_size);
+  }
+  if (favorite_brands !== undefined && favorite_brands !== null) {
+    updates.push('favorite_brands = ?');
+    values.push(favorite_brands);
+  }
+  
+  if (updates.length > 0) {
+    values.push(req.params.id);
+    db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
   }
 
   const user = db.prepare('SELECT id, username, display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users WHERE id = ?').get(req.params.id);
@@ -312,7 +333,7 @@ app.post('/api/posts', authenticateToken, upload.single('image'), (req, res) => 
   }
 
   const id = uuidv4();
-  const image = req.file ? `/uploads/${req.file.filename}` : '';
+  const image = req.file ? saveFileLocally(req.file.buffer, req.file.originalname) : '';
 
   db.prepare('INSERT INTO posts (id, user_id, content, image) VALUES (?, ?, ?, ?)')
     .run(id, req.user.id, content || '', image);

@@ -31,6 +31,13 @@ db.exec(`
     display_name TEXT,
     bio TEXT DEFAULT '',
     avatar TEXT DEFAULT '',
+    location TEXT DEFAULT '',
+    website TEXT DEFAULT '',
+    favorite_sneakers TEXT DEFAULT '',
+    favorite_socks TEXT DEFAULT '',
+    sneaker_size TEXT DEFAULT '',
+    sock_size TEXT DEFAULT '',
+    favorite_brands TEXT DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -150,7 +157,14 @@ app.post('/api/auth/login', async (req, res) => {
         email: user.email,
         display_name: user.display_name,
         bio: user.bio,
-        avatar: user.avatar
+        avatar: user.avatar,
+        location: user.location,
+        website: user.website,
+        favorite_sneakers: user.favorite_sneakers,
+        favorite_socks: user.favorite_socks,
+        sneaker_size: user.sneaker_size,
+        sock_size: user.sock_size,
+        favorite_brands: user.favorite_brands
       }
     });
   } catch (error) {
@@ -161,7 +175,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 // Get current user
 app.get('/api/auth/me', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, username, email, display_name, bio, avatar, created_at FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, email, display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json(user);
 });
@@ -170,13 +184,13 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 // Get all members
 app.get('/api/users', authenticateToken, (req, res) => {
-  const users = db.prepare('SELECT id, username, display_name, avatar, bio, created_at FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id, username, display_name, avatar, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
 // Get user profile
 app.get('/api/users/:id', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, bio, avatar, created_at FROM users WHERE id = ?').get(req.params.id);
+  const user = db.prepare('SELECT id, username, display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const posts = db.prepare('SELECT * FROM posts WHERE user_id = ? ORDER BY created_at DESC').all(req.params.id);
@@ -191,18 +205,39 @@ app.put('/api/users/:id', authenticateToken, upload.single('avatar'), (req, res)
     return res.status(403).json({ error: 'Not authorized' });
   }
 
-  const { display_name, bio } = req.body;
+  const { display_name, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands } = req.body;
   const avatar = req.file ? `/uploads/${req.file.filename}` : null;
 
   if (avatar) {
-    db.prepare('UPDATE users SET display_name = COALESCE(?, display_name), bio = COALESCE(?, bio), avatar = ? WHERE id = ?')
-      .run(display_name, bio, avatar, req.params.id);
+    db.prepare(`UPDATE users SET 
+      display_name = COALESCE(?, display_name), 
+      bio = COALESCE(?, bio), 
+      avatar = ?,
+      location = COALESCE(?, location),
+      website = COALESCE(?, website),
+      favorite_sneakers = COALESCE(?, favorite_sneakers),
+      favorite_socks = COALESCE(?, favorite_socks),
+      sneaker_size = COALESCE(?, sneaker_size),
+      sock_size = COALESCE(?, sock_size),
+      favorite_brands = COALESCE(?, favorite_brands)
+    WHERE id = ?`)
+      .run(display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, req.params.id);
   } else {
-    db.prepare('UPDATE users SET display_name = COALESCE(?, display_name), bio = COALESCE(?, bio) WHERE id = ?')
-      .run(display_name, bio, req.params.id);
+    db.prepare(`UPDATE users SET 
+      display_name = COALESCE(?, display_name), 
+      bio = COALESCE(?, bio),
+      location = COALESCE(?, location),
+      website = COALESCE(?, website),
+      favorite_sneakers = COALESCE(?, favorite_sneakers),
+      favorite_socks = COALESCE(?, favorite_socks),
+      sneaker_size = COALESCE(?, sneaker_size),
+      sock_size = COALESCE(?, sock_size),
+      favorite_brands = COALESCE(?, favorite_brands)
+    WHERE id = ?`)
+      .run(display_name, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, req.params.id);
   }
 
-  const user = db.prepare('SELECT id, username, display_name, bio, avatar, created_at FROM users WHERE id = ?').get(req.params.id);
+  const user = db.prepare('SELECT id, username, display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users WHERE id = ?').get(req.params.id);
   res.json(user);
 });
 

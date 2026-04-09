@@ -14,7 +14,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'sneaks-and-socks-club-secret-key-2
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'database.sqlite');
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 
-// Helper function to save file locally
+// Helper function to save file locally from memory buffer
 function saveFileLocally(buffer, originalname) {
   const ext = path.extname(originalname);
   const filename = `${uuidv4()}${ext}`;
@@ -86,7 +86,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(UPLOAD_DIR));
 
-// Multer setup - use memory storage to get buffer for ImgBB upload
+// Multer setup - using memory storage
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
@@ -108,7 +108,6 @@ const authenticateToken = (req, res, next) => {
 
 // ============ AUTH ROUTES ============
 
-// Register
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, email, password, display_name } = req.body;
@@ -138,7 +137,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -179,7 +177,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Get current user
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   const user = db.prepare('SELECT id, username, email, display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -188,13 +185,11 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 // ============ USER ROUTES ============
 
-// Get all members
 app.get('/api/users', authenticateToken, (req, res) => {
   const users = db.prepare('SELECT id, username, display_name, avatar, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
-// Get user profile
 app.get('/api/users/:id', authenticateToken, (req, res) => {
   const user = db.prepare('SELECT id, username, display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -205,7 +200,7 @@ app.get('/api/users/:id', authenticateToken, (req, res) => {
   res.json({ ...user, post_count: postCount });
 });
 
-// Update profile
+// Update profile - Improved with better handling for browser FormData
 app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req, res) => {
   if (req.user.id !== req.params.id) {
     return res.status(403).json({ error: 'Not authorized' });
@@ -215,60 +210,35 @@ app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req
   
   let avatarPath = null;
   if (req.file) {
-    console.log('File received:', req.file.originalname, req.file.size, 'bytes');
     avatarPath = saveFileLocally(req.file.buffer, req.file.originalname);
-    console.log('Avatar saved as:', avatarPath);
   }
 
-  // Build dynamic update - only update fields that are provided
-  const updates = [];
-  const values = [];
-  
-  if (display_name !== undefined && display_name !== null) {
-    updates.push('display_name = ?');
-    values.push(display_name);
-  }
-  if (bio !== undefined && bio !== null) {
-    updates.push('bio = ?');
-    values.push(bio);
-  }
-  if (avatarPath) {
-    updates.push('avatar = ?');
-    values.push(avatarPath);
-  }
-  if (location !== undefined && location !== null) {
-    updates.push('location = ?');
-    values.push(location);
-  }
-  if (website !== undefined && website !== null) {
-    updates.push('website = ?');
-    values.push(website);
-  }
-  if (favorite_sneakers !== undefined && favorite_sneakers !== null) {
-    updates.push('favorite_sneakers = ?');
-    values.push(favorite_sneakers);
-  }
-  if (favorite_socks !== undefined && favorite_socks !== null) {
-    updates.push('favorite_socks = ?');
-    values.push(favorite_socks);
-  }
-  if (sneaker_size !== undefined && sneaker_size !== null) {
-    updates.push('sneaker_size = ?');
-    values.push(sneaker_size);
-  }
-  if (sock_size !== undefined && sock_size !== null) {
-    updates.push('sock_size = ?');
-    values.push(sock_size);
-  }
-  if (favorite_brands !== undefined && favorite_brands !== null) {
-    updates.push('favorite_brands = ?');
-    values.push(favorite_brands);
-  }
-  
-  if (updates.length > 0) {
-    values.push(req.params.id);
-    db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-  }
+  // Use COALESCE with explicit null check for fields to ensure update logic works with FormData
+  db.prepare(`UPDATE users SET 
+    display_name = COALESCE(?, display_name), 
+    bio = COALESCE(?, bio), 
+    avatar = COALESCE(?, avatar),
+    location = COALESCE(?, location),
+    website = COALESCE(?, website),
+    favorite_sneakers = COALESCE(?, favorite_sneakers),
+    favorite_socks = COALESCE(?, favorite_socks),
+    sneaker_size = COALESCE(?, sneaker_size),
+    sock_size = COALESCE(?, sock_size),
+    favorite_brands = COALESCE(?, favorite_brands)
+  WHERE id = ?`)
+    .run(
+      display_name || null, 
+      bio || null, 
+      avatarPath || null, 
+      location || null, 
+      website || null, 
+      favorite_sneakers || null, 
+      favorite_socks || null, 
+      sneaker_size || null, 
+      sock_size || null, 
+      favorite_brands || null, 
+      req.params.id
+    );
 
   const user = db.prepare('SELECT id, username, display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, created_at FROM users WHERE id = ?').get(req.params.id);
   res.json(user);
@@ -276,7 +246,6 @@ app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req
 
 // ============ POST ROUTES ============
 
-// Get all posts (feed)
 app.get('/api/posts', authenticateToken, (req, res) => {
   const posts = db.prepare(`
     SELECT 
@@ -291,7 +260,6 @@ app.get('/api/posts', authenticateToken, (req, res) => {
     ORDER BY p.created_at DESC
   `).all();
 
-  // Add liked status for current user
   const postsWithLikeStatus = posts.map(post => {
     const liked = db.prepare('SELECT id FROM likes WHERE post_id = ? AND user_id = ?').get(post.id, req.user.id);
     return { ...post, liked: !!liked };
@@ -300,7 +268,6 @@ app.get('/api/posts', authenticateToken, (req, res) => {
   res.json(postsWithLikeStatus);
 });
 
-// Get user's posts
 app.get('/api/users/:id/posts', authenticateToken, (req, res) => {
   const posts = db.prepare(`
     SELECT 
@@ -324,7 +291,7 @@ app.get('/api/users/:id/posts', authenticateToken, (req, res) => {
   res.json(postsWithLikeStatus);
 });
 
-// Create post
+// FIXED: Post creation with image support for memoryStorage
 app.post('/api/posts', authenticateToken, upload.single('image'), (req, res) => {
   const { content } = req.body;
   
@@ -333,6 +300,7 @@ app.post('/api/posts', authenticateToken, upload.single('image'), (req, res) => 
   }
 
   const id = uuidv4();
+  // Using the helper function here too, because req.file.filename is undefined in memoryStorage
   const image = req.file ? saveFileLocally(req.file.buffer, req.file.originalname) : '';
 
   db.prepare('INSERT INTO posts (id, user_id, content, image) VALUES (?, ?, ?, ?)')
@@ -348,19 +316,16 @@ app.post('/api/posts', authenticateToken, upload.single('image'), (req, res) => 
   res.json({ ...post, like_count: 0, comment_count: 0, liked: false });
 });
 
-// Delete post
 app.delete('/api/posts/:id', authenticateToken, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   
   if (!post) return res.status(404).json({ error: 'Post not found' });
   if (post.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
 
-  // Delete likes and comments first
   db.prepare('DELETE FROM likes WHERE post_id = ?').run(req.params.id);
   db.prepare('DELETE FROM comments WHERE post_id = ?').run(req.params.id);
   db.prepare('DELETE FROM posts WHERE id = ?').run(req.params.id);
 
-  // Delete image file if exists
   if (post.image) {
     const imagePath = path.join(__dirname, post.image);
     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
@@ -371,7 +336,6 @@ app.delete('/api/posts/:id', authenticateToken, (req, res) => {
 
 // ============ LIKE ROUTES ============
 
-// Toggle like
 app.post('/api/posts/:id/like', authenticateToken, (req, res) => {
   const postId = req.params.id;
   const userId = req.user.id;
@@ -389,7 +353,6 @@ app.post('/api/posts/:id/like', authenticateToken, (req, res) => {
 
 // ============ COMMENT ROUTES ============
 
-// Get comments for a post
 app.get('/api/posts/:id/comments', authenticateToken, (req, res) => {
   const comments = db.prepare(`
     SELECT c.*, u.username, u.display_name, u.avatar
@@ -402,7 +365,6 @@ app.get('/api/posts/:id/comments', authenticateToken, (req, res) => {
   res.json(comments);
 });
 
-// Add comment
 app.post('/api/posts/:id/comments', authenticateToken, (req, res) => {
   const { content } = req.body;
   
@@ -428,18 +390,16 @@ app.post('/api/posts/:id/comments', authenticateToken, (req, res) => {
 
 const publicPath = path.join(__dirname, 'public');
 
-// Serve static files from public directory
 if (fs.existsSync(publicPath)) {
   app.use(express.static(publicPath));
   
-  // Serve index.html for all non-API routes (SPA support)
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
       const indexPath = path.join(publicPath, 'index.html');
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
-        res.status(404).send('Frontend not built yet. Run npm run build in frontend directory.');
+        res.status(404).send('Frontend not built yet.');
       }
     }
   });

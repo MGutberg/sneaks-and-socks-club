@@ -356,8 +356,29 @@ app.post('/api/posts/:id/comments', authenticateToken, (req, res) => {
   res.json(comment);
 });
 
+// ============ SERVE FRONTEND IN PRODUCTION ============
+
+const publicPath = path.join(__dirname, 'public');
+
+// Serve static files from public directory
+if (fs.existsSync(publicPath)) {
+  app.use(express.static(publicPath));
+  
+  // Serve index.html for all non-API routes (SPA support)
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
+      const indexPath = path.join(publicPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send('Frontend not built yet. Run npm run build in frontend directory.');
+      }
+    }
+  });
+}
+
 // ============ START SERVER ============
 
 app.listen(PORT, () => {
-  console.log(`Sneaks and Socks Club API running on port ${PORT}`);
+  console.log(`Sneaks and Socks Club running on port ${PORT}`);
 });

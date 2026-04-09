@@ -1,7 +1,7 @@
 import { useState, useEffect, createContext, useContext } from 'react'
 import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
-const API_URL = import.meta.env.VITE_API_URL || ''
+const API_URL = import.meta.env.VITE_API_URL || window.location.origin
 
 // ============ AUTH CONTEXT ============
 const AuthContext = createContext(null)

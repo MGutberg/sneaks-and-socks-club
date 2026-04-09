@@ -1,34 +1,17 @@
 version: '3.8'
 
 services:
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:5000
-    depends_on:
-      - backend
-    networks:
-      - app-network
-
-  backend:
-    build: ./backend
+  app:
+    build: .
     ports:
       - "5000:5000"
     volumes:
-      - ./backend/uploads:/app/uploads
-      - ./backend/data:/app/data
+      - ./data:/app/data
+      - ./uploads:/app/uploads
     environment:
+      - NODE_ENV=production
       - PORT=5000
       - DB_PATH=/app/data/database.sqlite
       - UPLOAD_DIR=/app/uploads
-    networks:
-      - app-network
-
-networks:
-  app-network:
-    driver: bridge
+      - JWT_SECRET=sneaks-socks-super-secret-2024
+    restart: unless-stopped

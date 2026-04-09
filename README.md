@@ -31,29 +31,45 @@ A community platform for sneaker and sock enthusiasts. Built with React, Node.js
 **Infrastructure:**
 - Docker & Docker Compose
 
-## Getting Started
+## Deployment
 
-### Prerequisites
+### Railway (Recommended)
 
-- Docker & Docker Compose installed
-- Node.js 20+ (for local development)
+1. Create a new Railway project
+2. Connect your GitHub account
+3. Select the `sneaks-and-socks-club` repository
+4. Set the **Root Directory** to `.` (the root)
+5. Railway will auto-detect the Dockerfile
+6. Add Environment Variables:
+   - `PORT` = `5000`
+   - `JWT_SECRET` = `your-secret-key-here`
+   - `DB_PATH` = `/app/data/database.sqlite`
+   - `UPLOAD_DIR` = `/app/uploads`
+   - `NODE_ENV` = `production`
+7. Deploy!
 
-### Quick Start with Docker
+The app will be available at `https://your-project.railway.app`
+
+### Docker (VPS/Local)
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/MGutberg/sneaks-and-socks-club.git
 cd sneaks-and-socks-club
 
-# Start with Docker Compose
-docker-compose up --build
+# Build and run with Docker
+docker build -t sneaks-and-socks .
+docker run -d -p 5000:5000 -v $(pwd)/data:/app/data -v $(pwd)/uploads:/app/uploads sneaks-and-socks
 ```
 
-The app will be available at:
-- **Frontend:** http://localhost:3000
-- **API:** http://localhost:5000
+Or with Docker Compose:
+```bash
+docker-compose up --build -d
+```
 
-### Local Development (without Docker)
+The app will be available at http://localhost:5000
+
+## Local Development
 
 **Backend:**
 ```bash
@@ -73,20 +89,19 @@ npm run dev
 
 ```
 sneaks-and-socks-club/
-├── docker-compose.yml
+├── Dockerfile           # Multi-stage build for frontend + backend
+├── docker-compose.yml   # Docker Compose for local development
 ├── backend/
-│   ├── Dockerfile
 │   ├── package.json
-│   ├── server.js          # Express API server
-│   ├── data/              # SQLite database (created on first run)
-│   └── uploads/            # User uploaded images
-└── frontend/
-    ├── Dockerfile
-    ├── package.json
-    ├── vite.config.js
-    ├── tailwind.config.js
-    └── src/
-        └── App.jsx         # Main React application
+│   └── server.js        # Express API + serves frontend static files
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── src/
+│       └── App.jsx      # Main React application
+├── data/                # SQLite database (created on first run)
+└── uploads/             # User uploaded images
 ```
 
 ## API Endpoints
@@ -113,14 +128,11 @@ sneaks-and-socks-club/
 
 ## Environment Variables
 
-Backend:
 - `PORT` - Server port (default: 5000)
 - `DB_PATH` - SQLite database path
 - `UPLOAD_DIR` - Upload directory path
 - `JWT_SECRET` - Secret for JWT tokens
-
-Frontend:
-- `VITE_API_URL` - API URL for development
+- `NODE_ENV` - Set to `production` for production mode
 
 ## License
 

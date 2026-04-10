@@ -1,13 +1,9 @@
 import { useState, useEffect, createContext, useContext } from 'react'
 import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
-const getApiUrl = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && envUrl !== 'undefined' && envUrl !== '') return envUrl;
-  return window.location.origin;
-};
-const API_URL = getApiUrl();
-const getImageUrl = (path) => path ? (path.startsWith('http') ? path : `${API_URL}${path.startsWith('/') ? '' : '/'}${path}`) : null;
+// KUGELSICHERER FIX: Da Server und Frontend zusammen laufen, nutzen wir relative Pfade!
+const API_URL = '';
+const getImageUrl = (path) => path;
 
 // --- AUTH CONTEXT ---
 const AuthContext = createContext(null)
@@ -68,7 +64,6 @@ function Navbar() {
   const apiFetch = useApi();
   const [onlineCount, setOnlineCount] = useState(1);
 
-  // Heartbeat & Online Counter Logik
   useEffect(() => {
     if (!user) return;
     const updateOnlineStatus = async () => {
@@ -79,7 +74,7 @@ function Navbar() {
       } catch (e) { console.error("Heartbeat failed", e); }
     };
     updateOnlineStatus();
-    const interval = setInterval(updateOnlineStatus, 30000); // Alle 30 Sekunden updaten
+    const interval = setInterval(updateOnlineStatus, 30000); 
     return () => clearInterval(interval);
   }, [user]);
 
@@ -89,16 +84,18 @@ function Navbar() {
         <div className="flex gap-6 items-center">
           <Link to="/" className="text-white font-bold text-xl">👟 Sneaks & Socks</Link>
           
-          <div className="hidden sm:flex items-center gap-1.5 ml-4">
-            <div className="flex items-center gap-1.5 bg-dark-300 px-2.5 py-1 rounded-full border border-dark-100" title="Mitglieder online">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500 shadow-[0_0_6px_#22c55e]"></span>
-              </span>
-              <span className="text-gray-300 text-xs font-bold">{onlineCount}</span>
+          {user && (
+            <div className="hidden sm:flex items-center gap-1.5 ml-4">
+              <div className="flex items-center gap-1.5 bg-dark-300 px-2.5 py-1 rounded-full border border-dark-100" title="Mitglieder online">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500 shadow-[0_0_6px_#22c55e]"></span>
+                </span>
+                <span className="text-gray-300 text-xs font-bold">{onlineCount}</span>
+              </div>
+              <Link to="/members" className="text-gray-400 hover:text-white transition text-sm font-medium ml-1">Members</Link>
             </div>
-            <Link to="/members" className="text-gray-400 hover:text-white transition text-sm font-medium ml-1">Members</Link>
-          </div>
+          )}
         </div>
         
         {user && (

@@ -27,7 +27,6 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const db = new Database(DB_PATH);
 
-// Tabellen erstellen
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, email TEXT UNIQUE NOT NULL, 
@@ -51,12 +50,9 @@ db.exec(`
   );
 `);
 
-// Automatisch last_active Spalte bei alten Datenbanken nachrüsten
 try {
   db.exec("ALTER TABLE users ADD COLUMN last_active DATETIME DEFAULT CURRENT_TIMESTAMP;");
-} catch (e) {
-  // Spalte existiert bereits, Fehler ignorieren
-}
+} catch (e) {}
 
 app.use(cors());
 app.use(express.json());
@@ -75,7 +71,6 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// --- AUTH ROUTES ---
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, email, password, display_name } = req.body;
@@ -101,7 +96,6 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
   res.json(db.prepare('SELECT id, username, email, display_name, avatar, bio, location, website FROM users WHERE id = ?').get(req.user.id));
 });
 
-// --- HEARTBEAT & ONLINE COUNTER ---
 app.post('/api/auth/heartbeat', authenticateToken, (req, res) => {
   db.prepare("UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = ?").run(req.user.id);
   res.json({ success: true });
@@ -112,10 +106,8 @@ app.get('/api/users/online', authenticateToken, (req, res) => {
   res.json({ count: row.count || 0 });
 });
 
-// --- USER ROUTES ---
 app.get('/api/users', authenticateToken, (req, res) => {
-  const users = db.prepare('SELECT id, username, display_name, avatar, bio FROM users ORDER BY created_at DESC').all();
-  res.json(users);
+  res.json(db.prepare('SELECT id, username, display_name, avatar, bio FROM users ORDER BY created_at DESC').all());
 });
 
 app.get('/api/users/:id', authenticateToken, (req, res) => res.json(db.prepare('SELECT id, username, display_name, avatar, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands FROM users WHERE id = ?').get(req.params.id)));
@@ -130,16 +122,14 @@ app.put('/api/users/:id', authenticateToken, upload.single('avatar'), (req, res)
   res.json(db.prepare('SELECT id, username, display_name, avatar, bio, location, website FROM users WHERE id = ?').get(req.params.id));
 });
 
-// --- POST ROUTES ---
 app.get('/api/posts', authenticateToken, (req, res) => {
-  const posts = db.prepare(`
+  res.json(db.prepare(`
     SELECT p.*, u.username, u.display_name, u.avatar,
     (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
     (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count,
     (SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as liked
     FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC
-  `).all(req.user.id);
-  res.json(posts);
+  `).all(req.user.id));
 });
 
 app.post('/api/posts', authenticateToken, upload.single('image'), (req, res) => {
@@ -162,7 +152,6 @@ app.delete('/api/posts/:id', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
-// --- LIKES & COMMENTS ---
 app.post('/api/posts/:id/like', authenticateToken, (req, res) => {
   const existing = db.prepare('SELECT id FROM likes WHERE post_id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (existing) {
@@ -185,7 +174,6 @@ app.post('/api/posts/:id/comments', authenticateToken, (req, res) => {
   res.json(db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(id));
 });
 
-// --- FRONTEND SERVING ---
 const frontendPath = fs.existsSync(path.join(__dirname, 'dist')) ? path.join(__dirname, 'dist') : path.join(__dirname, 'public');
 app.use(express.static(frontendPath));
 app.get('*', (req, res) => {

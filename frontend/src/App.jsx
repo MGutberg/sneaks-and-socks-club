@@ -1,5 +1,5 @@
-import { useState, useEffect, createContext, useContext } from 'react'
-import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { useState, useEffect, createContext, useContext, useRef } from 'react'
+import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 const getApiUrl = () => {
   const envUrl = import.meta.env.VITE_API_URL;
@@ -63,32 +63,43 @@ function useApi() {
 
 // --- NAVBAR ---
 function Navbar() {
-  const { user, logout } = useAuth(); 
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const apiFetch = useApi();
   const [onlineCount, setOnlineCount] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
-  // Heartbeat & Online Counter Logik
+  // Heartbeat & Online Counter & Unread Messages Logik
   useEffect(() => {
     if (!user) return;
-    const updateOnlineStatus = async () => {
+    const updateStatus = async () => {
       try {
         await apiFetch('/api/auth/heartbeat', { method: 'POST' });
-        const res = await apiFetch('/api/users/online');
-        setOnlineCount(res.count);
-      } catch (e) { console.error("Heartbeat failed", e); }
+        const [onlineRes, unreadRes] = await Promise.all([
+          apiFetch('/api/users/online'),
+          apiFetch('/api/messages/unread-count')
+        ]);
+        setOnlineCount(onlineRes.count);
+        setUnreadMessages(unreadRes.count);
+      } catch (e) { console.error("Status update failed", e); }
     };
-    updateOnlineStatus();
-    const interval = setInterval(updateOnlineStatus, 30000); // Alle 30 Sekunden updaten
+    updateStatus();
+    const interval = setInterval(updateStatus, 30000);
     return () => clearInterval(interval);
   }, [user]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+  };
 
   return (
     <nav className="bg-dark-200 border-b border-dark-100 p-4 sticky top-0 z-50">
       <div className="max-w-6xl mx-auto flex justify-between items-center h-10">
         <div className="flex gap-6 items-center">
           <Link to="/" className="text-white font-bold text-xl">👟 Sneaks & Socks</Link>
-          
+
           <div className="hidden sm:flex items-center gap-1.5 ml-4">
             <div className="flex items-center gap-1.5 bg-dark-300 px-2.5 py-1 rounded-full border border-dark-100" title="Mitglieder online">
               <span className="relative flex h-2 w-2">
@@ -99,19 +110,39 @@ function Navbar() {
             </div>
             <Link to="/members" className="text-gray-400 hover:text-white transition text-sm font-medium ml-1">Members</Link>
           </div>
+
+          {/* Search Input */}
+          <form onSubmit={handleSearch} className="hidden md:flex items-center ml-4">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Suchen..."
+                className="bg-dark-100 text-white text-sm px-4 py-2 pl-9 rounded-xl border border-dark-100 focus:border-red-500 outline-none w-48 transition"
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+            </div>
+          </form>
         </div>
-        
+
         {user && (
           <div className="flex gap-5 items-center">
-            {/* ÄNDERUNG: Blau zu Rot gewechselt */}
+            {/* Messages Icon */}
+            <Link to="/messages" className="relative text-gray-400 hover:text-white transition" title="Nachrichten">
+              <span className="text-xl">✉️</span>
+              {unreadMessages > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  {unreadMessages > 9 ? '9+' : unreadMessages}
+                </span>
+              )}
+            </Link>
             <Link to="/create-post" className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm flex items-center gap-2">
               <span>+</span><span className="hidden sm:inline">Post erstellen</span>
             </Link>
             <div className="h-6 w-px bg-dark-100 hidden sm:block"></div>
             <Link to={`/profile/${user.id}`} className="flex items-center gap-2 hover:opacity-80 transition">
-              {/* ÄNDERUNG: Blau-Hintergrund zu Rot-Hintergrund gewechselt */}
               <div className="w-9 h-9 rounded-full bg-red-950 flex items-center justify-center overflow-hidden border border-dark-100">
-                {/* ÄNDERUNG: Blau-Text zu Rot-Text gewechselt */}
                 {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-sm font-bold">{user.username[0].toUpperCase()}</span>}
               </div>
             </Link>
@@ -280,6 +311,93 @@ function CreatePostPage() {
   )
 }
 
+// --- SEARCH PAGE ---
+function SearchPage() {
+  const [searchParams] = useSearchParams();
+  const query = searchParams.get('q') || '';
+  const [results, setResults] = useState({ users: [], posts: [] });
+  const [loading, setLoading] = useState(false);
+  const apiFetch = useApi();
+
+  useEffect(() => {
+    if (!query.trim()) return;
+    const search = async () => {
+      setLoading(true);
+      try {
+        const data = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
+        setResults(data);
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
+    };
+    search();
+  }, [query]);
+
+  const loadPosts = async () => {
+    try {
+      const data = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
+      setResults(data);
+    } catch (e) { console.error(e); }
+  };
+
+  if (!query.trim()) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 px-4">
+        <div className="text-center bg-dark-200 p-10 rounded-2xl border border-dark-100">
+          <span className="text-5xl">🔍</span>
+          <p className="text-gray-400 mt-4 font-medium">Gib einen Suchbegriff ein</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto py-8 px-4">
+      <h1 className="text-2xl font-bold text-white mb-6">Suchergebnisse für "{query}"</h1>
+
+      {loading ? (
+        <div className="text-center text-gray-400 py-10">Suche...</div>
+      ) : (
+        <>
+          {/* Users */}
+          {results.users.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-lg font-bold text-white mb-4">Benutzer ({results.users.length})</h2>
+              <div className="space-y-3">
+                {results.users.map(user => (
+                  <Link key={user.id} to={`/profile/${user.id}`} className="flex items-center gap-4 bg-dark-200 p-4 rounded-xl border border-dark-100 hover:border-red-500 transition">
+                    <div className="w-12 h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                      {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{user.username[0].toUpperCase()}</span>}
+                    </div>
+                    <div>
+                      <p className="text-white font-bold">{user.display_name || user.username}</p>
+                      <p className="text-red-500 text-sm">@{user.username}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Posts */}
+          {results.posts.length > 0 && (
+            <div>
+              <h2 className="text-lg font-bold text-white mb-4">Posts ({results.posts.length})</h2>
+              {results.posts.map(p => <Post key={p.id} post={p} onRefresh={loadPosts} />)}
+            </div>
+          )}
+
+          {results.users.length === 0 && results.posts.length === 0 && (
+            <div className="text-center bg-dark-200 p-10 rounded-2xl border border-dark-100">
+              <span className="text-5xl">😕</span>
+              <p className="text-gray-400 mt-4 font-medium">Keine Ergebnisse gefunden</p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // --- HOME PAGE (Nur noch Feed) ---
 function HomePage() {
   const [posts, setPosts] = useState([]);
@@ -307,18 +425,26 @@ function HomePage() {
 
 // --- PROFILE PAGE ---
 function ProfilePage() {
-  const { id } = useParams(); 
-  const { user: currentUser, updateUser } = useAuth(); 
+  const { id } = useParams();
+  const { user: currentUser, updateUser } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [editAvatar, setEditAvatar] = useState(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [showFollowingModal, setShowFollowingModal] = useState(false);
+  const [followersList, setFollowersList] = useState([]);
+  const [followingList, setFollowingList] = useState([]);
   const apiFetch = useApi();
 
   const isOwnProfile = currentUser?.id === id;
 
-  const loadData = async () => { 
+  const loadData = async () => {
     try {
       const [pData, pPosts] = await Promise.all([
         apiFetch(`/api/users/${id}`),
@@ -327,10 +453,44 @@ function ProfilePage() {
       setProfile(pData);
       setPosts(pPosts);
       setEditForm(pData);
-    } catch(e) { console.error(e) } 
+      setIsFollowing(pData.is_following || false);
+      setFollowerCount(pData.follower_count || 0);
+      setFollowingCount(pData.following_count || 0);
+    } catch(e) { console.error(e) }
   };
-  
+
   useEffect(() => { loadData() }, [id]);
+
+  const handleFollow = async () => {
+    try {
+      const res = await apiFetch(`/api/users/${id}/follow`, { method: 'POST' });
+      setIsFollowing(res.following);
+      setFollowerCount(prev => res.following ? prev + 1 : prev - 1);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleSendMessage = async () => {
+    try {
+      const conv = await apiFetch('/api/conversations', { method: 'POST', body: JSON.stringify({ user_id: id }) });
+      navigate(`/messages/${conv.id}`);
+    } catch (e) { console.error(e); }
+  };
+
+  const loadFollowers = async () => {
+    try {
+      const data = await apiFetch(`/api/users/${id}/followers`);
+      setFollowersList(data);
+      setShowFollowersModal(true);
+    } catch (e) { console.error(e); }
+  };
+
+  const loadFollowing = async () => {
+    try {
+      const data = await apiFetch(`/api/users/${id}/following`);
+      setFollowingList(data);
+      setShowFollowingModal(true);
+    } catch (e) { console.error(e); }
+  };
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
@@ -368,9 +528,14 @@ function ProfilePage() {
             
             <div className="flex flex-wrap justify-center sm:justify-start gap-4 mt-6 text-sm text-gray-400 bg-dark-100 p-4 rounded-xl">
               {profile.location && <span className="flex items-center gap-1">📍 <strong className="text-white">{profile.location}</strong></span>}
-              {/* ÄNDERUNG: Blau-Text zu Rot-Text gewechselt */}
               {profile.website && <span className="flex items-center gap-1">🔗 <a href={profile.website} target="_blank" rel="noreferrer" className="text-red-400 hover:underline">{profile.website}</a></span>}
               <span className="flex items-center gap-1">📝 <strong className="text-white">{posts.length}</strong> Posts</span>
+              <button onClick={loadFollowers} className="flex items-center gap-1 hover:text-white transition cursor-pointer">
+                👥 <strong className="text-white">{followerCount}</strong> Follower
+              </button>
+              <button onClick={loadFollowing} className="flex items-center gap-1 hover:text-white transition cursor-pointer">
+                ➡️ <strong className="text-white">{followingCount}</strong> Following
+              </button>
             </div>
             
             {(profile.favorite_sneakers || profile.sneaker_size || profile.favorite_brands) && (
@@ -382,8 +547,17 @@ function ProfilePage() {
             )}
 
             {isOwnProfile && !editing && (
-              {/* ÄNDERUNG: Blau-Button zu Rot-Button gewechselt */}
               <button onClick={() => setEditing(true)} className="mt-6 w-full sm:w-auto px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition shadow-md">Profil bearbeiten</button>
+            )}
+            {!isOwnProfile && (
+              <div className="mt-6 flex flex-wrap gap-3 justify-center sm:justify-start">
+                <button onClick={handleFollow} className={`px-6 py-2.5 rounded-xl font-bold transition shadow-md ${isFollowing ? 'bg-dark-100 hover:bg-dark-300 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}>
+                  {isFollowing ? 'Entfolgen' : 'Folgen'}
+                </button>
+                <button onClick={handleSendMessage} className="px-6 py-2.5 bg-dark-100 hover:bg-dark-300 text-white rounded-xl font-bold transition shadow-md">
+                  ✉️ Nachricht
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -442,8 +616,241 @@ function ProfilePage() {
 
       <h2 className="text-2xl font-bold text-white mb-6 pl-2">Posts von {profile.display_name || profile.username}</h2>
       {posts.length === 0 ? <div className="text-center bg-dark-200 p-8 rounded-2xl border border-dark-100"><p className="text-gray-400 font-medium">Keine Posts vorhanden.</p></div> : posts.map(p => <Post key={p.id} post={p} onRefresh={loadData} />)}
+
+      {/* Followers Modal */}
+      {showFollowersModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowFollowersModal(false)}>
+          <div className="bg-dark-200 rounded-2xl border border-dark-100 w-full max-w-md max-h-[70vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-dark-100">
+              <h3 className="text-white font-bold text-lg">Follower</h3>
+              <button onClick={() => setShowFollowersModal(false)} className="text-gray-400 hover:text-white text-xl">×</button>
+            </div>
+            <div className="overflow-y-auto max-h-[60vh] p-4">
+              {followersList.length === 0 ? (
+                <p className="text-gray-400 text-center py-4">Noch keine Follower</p>
+              ) : (
+                <div className="space-y-3">
+                  {followersList.map(u => (
+                    <Link key={u.id} to={`/profile/${u.id}`} onClick={() => setShowFollowersModal(false)} className="flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition">
+                      <div className="w-10 h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                        {u.avatar ? <img src={getImageUrl(u.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{u.username[0].toUpperCase()}</span>}
+                      </div>
+                      <div>
+                        <p className="text-white font-bold">{u.display_name || u.username}</p>
+                        <p className="text-red-500 text-sm">@{u.username}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Following Modal */}
+      {showFollowingModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowFollowingModal(false)}>
+          <div className="bg-dark-200 rounded-2xl border border-dark-100 w-full max-w-md max-h-[70vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-dark-100">
+              <h3 className="text-white font-bold text-lg">Folge ich</h3>
+              <button onClick={() => setShowFollowingModal(false)} className="text-gray-400 hover:text-white text-xl">×</button>
+            </div>
+            <div className="overflow-y-auto max-h-[60vh] p-4">
+              {followingList.length === 0 ? (
+                <p className="text-gray-400 text-center py-4">Folgt niemandem</p>
+              ) : (
+                <div className="space-y-3">
+                  {followingList.map(u => (
+                    <Link key={u.id} to={`/profile/${u.id}`} onClick={() => setShowFollowingModal(false)} className="flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition">
+                      <div className="w-10 h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                        {u.avatar ? <img src={getImageUrl(u.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{u.username[0].toUpperCase()}</span>}
+                      </div>
+                      <div>
+                        <p className="text-white font-bold">{u.display_name || u.username}</p>
+                        <p className="text-red-500 text-sm">@{u.username}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+// --- MESSAGES PAGE ---
+function MessagesPage() {
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const apiFetch = useApi();
+
+  const loadConversations = async () => {
+    try {
+      const data = await apiFetch('/api/conversations');
+      setConversations(data);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadConversations(); }, []);
+
+  return (
+    <div className="max-w-2xl mx-auto py-8 px-4">
+      <h1 className="text-2xl font-bold text-white mb-6">Nachrichten</h1>
+
+      {loading ? (
+        <div className="text-center text-gray-400 py-10">Lade Konversationen...</div>
+      ) : conversations.length === 0 ? (
+        <div className="text-center bg-dark-200 p-10 rounded-2xl border border-dark-100">
+          <span className="text-5xl">✉️</span>
+          <p className="text-gray-400 mt-4 font-medium">Noch keine Nachrichten</p>
+          <p className="text-gray-500 text-sm mt-2">Besuche ein Profil und klicke auf "Nachricht"</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {conversations.map(conv => (
+            <Link key={conv.id} to={`/messages/${conv.id}`} className="flex items-center gap-4 bg-dark-200 p-4 rounded-xl border border-dark-100 hover:border-red-500 transition">
+              <div className="relative">
+                <div className="w-14 h-14 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                  {conv.other_avatar ? <img src={getImageUrl(conv.other_avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-xl font-bold">{conv.other_username[0].toUpperCase()}</span>}
+                </div>
+                {conv.unread_count > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {conv.unread_count > 9 ? '9+' : conv.unread_count}
+                  </span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-bold">{conv.other_display_name || conv.other_username}</p>
+                <p className="text-gray-400 text-sm truncate">{conv.last_message || 'Keine Nachrichten'}</p>
+              </div>
+              <span className="text-gray-500 text-xs">{new Date(conv.last_message_at).toLocaleDateString('de-DE')}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- CONVERSATION PAGE ---
+function ConversationPage() {
+  const { id } = useParams();
+  const { user: currentUser } = useAuth();
+  const [conversation, setConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [otherUser, setOtherUser] = useState(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef(null);
+  const apiFetch = useApi();
+
+  const loadConversation = async () => {
+    try {
+      const data = await apiFetch(`/api/conversations/${id}`);
+      setConversation(data.conversation);
+      setMessages(data.messages);
+      setOtherUser(data.other_user);
+      await apiFetch(`/api/conversations/${id}/read`, { method: 'PUT' });
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    loadConversation();
+    const interval = setInterval(loadConversation, 5000);
+    return () => clearInterval(interval);
+  }, [id]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim() || sending) return;
+    setSending(true);
+    try {
+      const msg = await apiFetch(`/api/conversations/${id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ content: newMessage.trim() })
+      });
+      setMessages([...messages, msg]);
+      setNewMessage('');
+    } catch (e) { console.error(e); }
+    finally { setSending(false); }
+  };
+
+  if (loading) {
+    return <div className="max-w-2xl mx-auto py-8 px-4 text-center text-gray-400">Lade Konversation...</div>;
+  }
+
+  if (!otherUser) {
+    return <div className="max-w-2xl mx-auto py-8 px-4 text-center text-gray-400">Konversation nicht gefunden</div>;
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto py-4 px-4 flex flex-col h-[calc(100vh-80px)]">
+      {/* Header */}
+      <div className="flex items-center gap-4 bg-dark-200 p-4 rounded-xl border border-dark-100 mb-4">
+        <Link to={`/profile/${otherUser.id}`} className="flex items-center gap-4 flex-1 hover:opacity-80 transition">
+          <div className="w-12 h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+            {otherUser.avatar ? <img src={getImageUrl(otherUser.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{otherUser.username[0].toUpperCase()}</span>}
+          </div>
+          <div>
+            <p className="text-white font-bold">{otherUser.display_name || otherUser.username}</p>
+            <p className="text-red-500 text-sm">@{otherUser.username}</p>
+          </div>
+        </Link>
+        <Link to="/messages" className="text-gray-400 hover:text-white transition">← Zurück</Link>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto bg-dark-200 rounded-xl border border-dark-100 p-4 space-y-4">
+        {messages.length === 0 ? (
+          <p className="text-gray-400 text-center py-10">Schreibe die erste Nachricht!</p>
+        ) : (
+          messages.map(msg => {
+            const isOwn = msg.sender_id === currentUser.id;
+            return (
+              <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[70%] px-4 py-3 rounded-2xl ${isOwn ? 'bg-red-600 text-white' : 'bg-dark-100 text-gray-200'}`}>
+                  <p className="break-words">{msg.content}</p>
+                  <p className={`text-xs mt-1 ${isOwn ? 'text-red-200' : 'text-gray-500'}`}>
+                    {new Date(msg.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <form onSubmit={handleSend} className="mt-4 flex gap-3">
+        <input
+          type="text"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Schreibe eine Nachricht..."
+          className="flex-1 bg-dark-100 text-white p-4 rounded-xl border border-dark-100 focus:border-red-500 outline-none"
+        />
+        <button
+          type="submit"
+          disabled={!newMessage.trim() || sending}
+          className="bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-xl font-bold transition disabled:opacity-50"
+        >
+          {sending ? '...' : 'Senden'}
+        </button>
+      </form>
+    </div>
+  );
 }
 
 // --- MEMBERS PAGE (Mit Gimmick) ---
@@ -596,6 +1003,9 @@ export default function App() {
                       <Route path="/create-post" element={<CreatePostPage />} />
                       <Route path="/profile/:id" element={<ProfilePage />} />
                       <Route path="/members" element={<MembersPage />} />
+                      <Route path="/search" element={<SearchPage />} />
+                      <Route path="/messages" element={<MessagesPage />} />
+                      <Route path="/messages/:id" element={<ConversationPage />} />
                     </Routes>
                   </main>
                 </div>

@@ -29,7 +29,7 @@ const db = new Database(DB_PATH);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, email TEXT UNIQUE NOT NULL, 
+    id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL, display_name TEXT, bio TEXT DEFAULT '', avatar TEXT DEFAULT '',
     location TEXT DEFAULT '', website TEXT DEFAULT '', favorite_sneakers TEXT DEFAULT '',
     favorite_socks TEXT DEFAULT '', sneaker_size TEXT DEFAULT '', sock_size TEXT DEFAULT '',
@@ -46,6 +46,20 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS comments (
     id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS follows (
+    id TEXT PRIMARY KEY, follower_id TEXT NOT NULL, following_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(follower_id, following_id)
+  );
+  CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY, user1_id TEXT NOT NULL, user2_id TEXT NOT NULL,
+    last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(user1_id, user2_id)
+  );
+  CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, sender_id TEXT NOT NULL,
+    content TEXT NOT NULL, read_at DATETIME DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
@@ -111,6 +125,28 @@ app.get('/api/users/online', authenticateToken, (req, res) => {
   res.json({ count: row.count || 0 });
 });
 
+// --- SEARCH ROUTE ---
+app.get('/api/search', authenticateToken, (req, res) => {
+  const q = req.query.q;
+  if (!q || q.trim().length === 0) return res.json({ users: [], posts: [] });
+  const searchTerm = `%${q.trim()}%`;
+  const users = db.prepare(`
+    SELECT id, username, display_name, avatar, bio
+    FROM users WHERE username LIKE ? OR display_name LIKE ?
+    ORDER BY username ASC LIMIT 20
+  `).all(searchTerm, searchTerm);
+  const posts = db.prepare(`
+    SELECT p.*, u.username, u.display_name, u.avatar,
+    (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+    (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count,
+    (SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as liked
+    FROM posts p JOIN users u ON p.user_id = u.id
+    WHERE p.content LIKE ?
+    ORDER BY p.created_at DESC LIMIT 50
+  `).all(req.user.id, searchTerm);
+  res.json({ users, posts });
+});
+
 // --- USER ROUTES ---
 // HIER WAR DER FEHLER: Diese Route fehlte, deshalb war die Members-Seite leer!
 app.get('/api/users', authenticateToken, (req, res) => {
@@ -118,8 +154,46 @@ app.get('/api/users', authenticateToken, (req, res) => {
   res.json(users);
 });
 
-app.get('/api/users/:id', authenticateToken, (req, res) => res.json(db.prepare('SELECT id, username, display_name, avatar, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands FROM users WHERE id = ?').get(req.params.id)));
+app.get('/api/users/:id', authenticateToken, (req, res) => {
+  const user = db.prepare('SELECT id, username, display_name, avatar, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const followerCount = db.prepare('SELECT COUNT(*) as count FROM follows WHERE following_id = ?').get(req.params.id).count;
+  const followingCount = db.prepare('SELECT COUNT(*) as count FROM follows WHERE follower_id = ?').get(req.params.id).count;
+  const isFollowing = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(req.user.id, req.params.id) ? true : false;
+  res.json({ ...user, follower_count: followerCount, following_count: followingCount, is_following: isFollowing });
+});
 app.get('/api/users/:id/posts', authenticateToken, (req, res) => res.json(db.prepare('SELECT p.*, u.username, u.display_name, u.avatar FROM posts p JOIN users u ON p.user_id = u.id WHERE p.user_id = ? ORDER BY p.created_at DESC').all(req.params.id)));
+
+// --- FOLLOWER ROUTES ---
+app.post('/api/users/:id/follow', authenticateToken, (req, res) => {
+  if (req.user.id === req.params.id) return res.status(400).json({ error: 'Cannot follow yourself' });
+  const existing = db.prepare('SELECT id FROM follows WHERE follower_id = ? AND following_id = ?').get(req.user.id, req.params.id);
+  if (existing) {
+    db.prepare('DELETE FROM follows WHERE id = ?').run(existing.id);
+    res.json({ following: false });
+  } else {
+    db.prepare('INSERT INTO follows (id, follower_id, following_id) VALUES (?, ?, ?)').run(uuidv4(), req.user.id, req.params.id);
+    res.json({ following: true });
+  }
+});
+
+app.get('/api/users/:id/followers', authenticateToken, (req, res) => {
+  const followers = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, u.bio
+    FROM follows f JOIN users u ON f.follower_id = u.id
+    WHERE f.following_id = ? ORDER BY f.created_at DESC
+  `).all(req.params.id);
+  res.json(followers);
+});
+
+app.get('/api/users/:id/following', authenticateToken, (req, res) => {
+  const following = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, u.bio
+    FROM follows f JOIN users u ON f.following_id = u.id
+    WHERE f.follower_id = ? ORDER BY f.created_at DESC
+  `).all(req.params.id);
+  res.json(following);
+});
 
 app.put('/api/users/:id', authenticateToken, upload.single('avatar'), (req, res) => {
   if (req.user.id !== req.params.id) return res.status(403).json({ error: 'Unauthorized' });
@@ -196,6 +270,92 @@ app.post('/api/posts/:id/comments', authenticateToken, (req, res) => {
   const id = uuidv4();
   db.prepare('INSERT INTO comments (id, post_id, user_id, content) VALUES (?, ?, ?, ?)').run(id, req.params.id, req.user.id, req.body.content);
   res.json(db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(id));
+});
+
+// --- DIRECT MESSAGES ROUTES ---
+app.get('/api/conversations', authenticateToken, (req, res) => {
+  const conversations = db.prepare(`
+    SELECT c.*,
+      CASE WHEN c.user1_id = ? THEN u2.id ELSE u1.id END as other_user_id,
+      CASE WHEN c.user1_id = ? THEN u2.username ELSE u1.username END as other_username,
+      CASE WHEN c.user1_id = ? THEN u2.display_name ELSE u1.display_name END as other_display_name,
+      CASE WHEN c.user1_id = ? THEN u2.avatar ELSE u1.avatar END as other_avatar,
+      (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+      (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND sender_id != ? AND read_at IS NULL) as unread_count
+    FROM conversations c
+    JOIN users u1 ON c.user1_id = u1.id
+    JOIN users u2 ON c.user2_id = u2.id
+    WHERE c.user1_id = ? OR c.user2_id = ?
+    ORDER BY c.last_message_at DESC
+  `).all(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id);
+  res.json(conversations);
+});
+
+app.post('/api/conversations', authenticateToken, (req, res) => {
+  const { user_id } = req.body;
+  if (!user_id) return res.status(400).json({ error: 'user_id required' });
+  if (user_id === req.user.id) return res.status(400).json({ error: 'Cannot message yourself' });
+  const [u1, u2] = [req.user.id, user_id].sort();
+  let conversation = db.prepare('SELECT * FROM conversations WHERE user1_id = ? AND user2_id = ?').get(u1, u2);
+  if (!conversation) {
+    const id = uuidv4();
+    db.prepare('INSERT INTO conversations (id, user1_id, user2_id) VALUES (?, ?, ?)').run(id, u1, u2);
+    conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
+  }
+  res.json(conversation);
+});
+
+app.get('/api/conversations/:id', authenticateToken, (req, res) => {
+  const conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  if (conversation.user1_id !== req.user.id && conversation.user2_id !== req.user.id) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const messages = db.prepare(`
+    SELECT m.*, u.username, u.display_name, u.avatar
+    FROM messages m JOIN users u ON m.sender_id = u.id
+    WHERE m.conversation_id = ? ORDER BY m.created_at ASC
+  `).all(req.params.id);
+  const otherUserId = conversation.user1_id === req.user.id ? conversation.user2_id : conversation.user1_id;
+  const otherUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(otherUserId);
+  res.json({ conversation, messages, other_user: otherUser });
+});
+
+app.post('/api/conversations/:id/messages', authenticateToken, (req, res) => {
+  const { content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: 'Content required' });
+  const conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  if (conversation.user1_id !== req.user.id && conversation.user2_id !== req.user.id) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const id = uuidv4();
+  db.prepare('INSERT INTO messages (id, conversation_id, sender_id, content) VALUES (?, ?, ?, ?)').run(id, req.params.id, req.user.id, content.trim());
+  db.prepare('UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+  const message = db.prepare(`
+    SELECT m.*, u.username, u.display_name, u.avatar
+    FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = ?
+  `).get(id);
+  res.json(message);
+});
+
+app.put('/api/conversations/:id/read', authenticateToken, (req, res) => {
+  const conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  if (conversation.user1_id !== req.user.id && conversation.user2_id !== req.user.id) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  db.prepare('UPDATE messages SET read_at = CURRENT_TIMESTAMP WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL').run(req.params.id, req.user.id);
+  res.json({ success: true });
+});
+
+app.get('/api/messages/unread-count', authenticateToken, (req, res) => {
+  const row = db.prepare(`
+    SELECT COUNT(*) as count FROM messages m
+    JOIN conversations c ON m.conversation_id = c.id
+    WHERE (c.user1_id = ? OR c.user2_id = ?) AND m.sender_id != ? AND m.read_at IS NULL
+  `).get(req.user.id, req.user.id, req.user.id);
+  res.json({ count: row.count || 0 });
 });
 
 // --- FRONTEND SERVING ---

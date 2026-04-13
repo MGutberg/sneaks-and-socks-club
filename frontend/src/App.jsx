@@ -440,6 +440,7 @@ function ProfilePage() {
   const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [followersList, setFollowersList] = useState([]);
   const [followingList, setFollowingList] = useState([]);
+  const [externalLinkModal, setExternalLinkModal] = useState(null);
   const apiFetch = useApi();
 
   const isOwnProfile = currentUser?.id === id;
@@ -528,7 +529,7 @@ function ProfilePage() {
             
             <div className="flex flex-wrap justify-center sm:justify-start gap-4 mt-6 text-sm text-gray-400 bg-dark-100 p-4 rounded-xl">
               {profile.location && <span className="flex items-center gap-1">📍 <strong className="text-white">{profile.location}</strong></span>}
-              {profile.website && <span className="flex items-center gap-1">🔗 <a href={profile.website} target="_blank" rel="noreferrer" className="text-red-400 hover:underline">{profile.website}</a></span>}
+              {profile.website && <span className="flex items-center gap-1">🔗 <button onClick={() => setExternalLinkModal(profile.website)} className="text-red-400 hover:underline text-left">{profile.website}</button></span>}
               <span className="flex items-center gap-1">📝 <strong className="text-white">{posts.length}</strong> Posts</span>
               <button onClick={loadFollowers} className="flex items-center gap-1 hover:text-white transition cursor-pointer">
                 👥 <strong className="text-white">{followerCount}</strong> Follower
@@ -581,7 +582,7 @@ function ProfilePage() {
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Website URL</label>
-                <input type="url" value={editForm.website || ''} onChange={e => setEditForm({...editForm, website: e.target.value})} className="w-full bg-dark-100 border border-dark-100 rounded-xl p-3 text-white focus:border-red-500 outline-none" />
+                <input type="url" value={editForm.website || ''} onChange={e => setEditForm({...editForm, website: e.target.value})} placeholder="Bitte https:// angeben" className="w-full bg-dark-100 border border-dark-100 rounded-xl p-3 text-white focus:border-red-500 outline-none placeholder:text-gray-600" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Lieblings Sneaker</label>
@@ -678,6 +679,47 @@ function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* External Link Warning Modal */}
+      {externalLinkModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setExternalLinkModal(null)}>
+          <div className="bg-dark-200 rounded-2xl border border-dark-100 w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-dark-100">
+              <h3 className="text-white font-bold text-lg">Externe Seite</h3>
+              <button onClick={() => setExternalLinkModal(null)} className="text-gray-400 hover:text-white text-xl">×</button>
+            </div>
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-dark-100 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-dark-100">
+                <span className="text-3xl">🔗</span>
+              </div>
+              <p className="text-white font-bold text-lg mb-2">Du verlässt Sneaks & Socks</p>
+              <p className="text-gray-400 text-sm mb-4">
+                Du wirst zu einer externen Seite weitergeleitet. Wir sind nicht verantwortlich für die Inhalte auf dieser Seite.
+              </p>
+              <p className="text-gray-500 text-xs bg-dark-100 p-3 rounded-xl break-all mb-6">
+                {externalLinkModal}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setExternalLinkModal(null)}
+                  className="flex-1 bg-dark-100 hover:bg-dark-300 text-white px-6 py-3 rounded-xl font-bold transition"
+                >
+                  Abbrechen
+                </button>
+                <a
+                  href={externalLinkModal}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setExternalLinkModal(null)}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-bold transition text-center"
+                >
+                  Weiter zur Seite
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -686,6 +728,11 @@ function ProfilePage() {
 function MessagesPage() {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showNewMessage, setShowNewMessage] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const navigate = useNavigate();
   const apiFetch = useApi();
 
   const loadConversations = async () => {
@@ -698,9 +745,41 @@ function MessagesPage() {
 
   useEffect(() => { loadConversations(); }, []);
 
+  const handleSearch = async (query) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const data = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
+      setSearchResults(data.users || []);
+    } catch (e) { console.error(e); }
+    finally { setSearching(false); }
+  };
+
+  const startConversation = async (userId) => {
+    try {
+      const conv = await apiFetch('/api/conversations', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId })
+      });
+      navigate(`/messages/${conv.id}`);
+    } catch (e) { console.error(e); }
+  };
+
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold text-white mb-6">Nachrichten</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-white">Nachrichten</h1>
+        <button
+          onClick={() => setShowNewMessage(true)}
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold transition shadow-md flex items-center gap-2"
+        >
+          <span>+</span> Neue Nachricht
+        </button>
+      </div>
 
       {loading ? (
         <div className="text-center text-gray-400 py-10">Lade Konversationen...</div>
@@ -708,7 +787,7 @@ function MessagesPage() {
         <div className="text-center bg-dark-200 p-10 rounded-2xl border border-dark-100">
           <span className="text-5xl">✉️</span>
           <p className="text-gray-400 mt-4 font-medium">Noch keine Nachrichten</p>
-          <p className="text-gray-500 text-sm mt-2">Besuche ein Profil und klicke auf "Nachricht"</p>
+          <p className="text-gray-500 text-sm mt-2">Klicke auf "Neue Nachricht" um loszulegen</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -731,6 +810,58 @@ function MessagesPage() {
               <span className="text-gray-500 text-xs">{new Date(conv.last_message_at).toLocaleDateString('de-DE')}</span>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* Neue Nachricht Modal */}
+      {showNewMessage && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => { setShowNewMessage(false); setSearchQuery(''); setSearchResults([]); }}>
+          <div className="bg-dark-200 rounded-2xl border border-dark-100 w-full max-w-md max-h-[70vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-dark-100">
+              <h3 className="text-white font-bold text-lg">Neue Nachricht</h3>
+              <button onClick={() => { setShowNewMessage(false); setSearchQuery(''); setSearchResults([]); }} className="text-gray-400 hover:text-white text-xl">×</button>
+            </div>
+            <div className="p-4">
+              <div className="relative mb-4">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  placeholder="Benutzer suchen..."
+                  className="w-full bg-dark-100 text-white p-3 pl-10 rounded-xl border border-dark-100 focus:border-red-500 outline-none"
+                  autoFocus
+                />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+              </div>
+              <div className="overflow-y-auto max-h-[50vh]">
+                {searching ? (
+                  <p className="text-gray-400 text-center py-4">Suche...</p>
+                ) : searchQuery.trim() && searchResults.length === 0 ? (
+                  <p className="text-gray-400 text-center py-4">Keine Benutzer gefunden</p>
+                ) : searchResults.length > 0 ? (
+                  <div className="space-y-2">
+                    {searchResults.map(user => (
+                      <button
+                        key={user.id}
+                        onClick={() => startConversation(user.id)}
+                        className="w-full flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition text-left"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                          {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{user.username[0].toUpperCase()}</span>}
+                        </div>
+                        <div>
+                          <p className="text-white font-bold">{user.display_name || user.username}</p>
+                          <p className="text-red-500 text-sm">@{user.username}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-center py-4 text-sm">Gib einen Namen ein um Benutzer zu finden</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -980,7 +1111,7 @@ function RegisterPage() {
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen bg-dark-300 flex items-center justify-center text-red-500 font-bold text-xl">Lade Club...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-red-500 font-bold text-xl">Lade Club...</div>;
   return user ? children : <Navigate to="/login" />;
 }
 
@@ -989,7 +1120,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         {/* ÄNDERUNG: Globaler Primär-Farben-Wechsel: selektionsfarbe von blau zu rot gewechselt */}
-        <div className="min-h-screen bg-dark-300 text-gray-100 selection:bg-red-500 selection:text-white">
+        <div className="min-h-screen text-gray-100 selection:bg-red-500 selection:text-white">
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />

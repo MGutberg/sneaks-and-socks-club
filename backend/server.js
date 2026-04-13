@@ -62,7 +62,26 @@ db.exec(`
     content TEXT NOT NULL, read_at DATETIME DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS forum_topics (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL,
+    content TEXT NOT NULL, image TEXT DEFAULT '', category TEXT DEFAULT 'general',
+    views INTEGER DEFAULT 0, pinned INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE TABLE IF NOT EXISTS forum_replies (
+    id TEXT PRIMARY KEY, topic_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    content TEXT NOT NULL, image TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (topic_id) REFERENCES forum_topics(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
+
+// Automatisch Spalten bei alten Datenbanken nachrüsten
+try {
+  db.exec("ALTER TABLE messages ADD COLUMN archived_by TEXT DEFAULT NULL;");
+} catch (e) { /* Spalte existiert bereits */ }
 
 // Automatisch last_active Spalte bei alten Datenbanken nachrüsten
 try {
@@ -349,6 +368,110 @@ app.put('/api/conversations/:id/read', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
+// --- MESSAGE FOLDERS (Posteingang, Postausgang, Archiv) ---
+app.get('/api/messages/inbox', authenticateToken, (req, res) => {
+  const messages = db.prepare(`
+    SELECT m.*, u.username, u.display_name, u.avatar,
+      c.user1_id, c.user2_id
+    FROM messages m
+    JOIN conversations c ON m.conversation_id = c.id
+    JOIN users u ON m.sender_id = u.id
+    WHERE (c.user1_id = ? OR c.user2_id = ?)
+      AND m.sender_id != ?
+      AND (m.archived_by IS NULL OR m.archived_by NOT LIKE ?)
+    ORDER BY m.created_at DESC
+  `).all(req.user.id, req.user.id, req.user.id, `%${req.user.id}%`);
+  res.json(messages);
+});
+
+app.get('/api/messages/sent', authenticateToken, (req, res) => {
+  const messages = db.prepare(`
+    SELECT m.*, u.username as recipient_username, u.display_name as recipient_display_name, u.avatar as recipient_avatar
+    FROM messages m
+    JOIN conversations c ON m.conversation_id = c.id
+    JOIN users u ON u.id = CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END
+    WHERE m.sender_id = ?
+      AND (m.archived_by IS NULL OR m.archived_by NOT LIKE ?)
+    ORDER BY m.created_at DESC
+  `).all(req.user.id, req.user.id, `%${req.user.id}%`);
+  res.json(messages);
+});
+
+app.get('/api/messages/archived', authenticateToken, (req, res) => {
+  const messages = db.prepare(`
+    SELECT m.*,
+      sender.username as sender_username, sender.display_name as sender_display_name, sender.avatar as sender_avatar,
+      CASE WHEN m.sender_id = ? THEN 'sent' ELSE 'received' END as direction
+    FROM messages m
+    JOIN conversations c ON m.conversation_id = c.id
+    JOIN users sender ON m.sender_id = sender.id
+    WHERE (c.user1_id = ? OR c.user2_id = ?)
+      AND m.archived_by LIKE ?
+    ORDER BY m.created_at DESC
+  `).all(req.user.id, req.user.id, req.user.id, `%${req.user.id}%`);
+  res.json(messages);
+});
+
+app.post('/api/messages/:id/archive', authenticateToken, (req, res) => {
+  const message = db.prepare(`
+    SELECT m.*, c.user1_id, c.user2_id FROM messages m
+    JOIN conversations c ON m.conversation_id = c.id
+    WHERE m.id = ?
+  `).get(req.params.id);
+  if (!message) return res.status(404).json({ error: 'Message not found' });
+  if (message.user1_id !== req.user.id && message.user2_id !== req.user.id) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const currentArchived = message.archived_by || '';
+  if (!currentArchived.includes(req.user.id)) {
+    const newArchived = currentArchived ? `${currentArchived},${req.user.id}` : req.user.id;
+    db.prepare('UPDATE messages SET archived_by = ? WHERE id = ?').run(newArchived, req.params.id);
+  }
+  res.json({ success: true, archived: true });
+});
+
+app.post('/api/messages/:id/unarchive', authenticateToken, (req, res) => {
+  const message = db.prepare(`
+    SELECT m.*, c.user1_id, c.user2_id FROM messages m
+    JOIN conversations c ON m.conversation_id = c.id
+    WHERE m.id = ?
+  `).get(req.params.id);
+  if (!message) return res.status(404).json({ error: 'Message not found' });
+  if (message.user1_id !== req.user.id && message.user2_id !== req.user.id) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const currentArchived = message.archived_by || '';
+  const newArchived = currentArchived.split(',').filter(id => id !== req.user.id).join(',');
+  db.prepare('UPDATE messages SET archived_by = ? WHERE id = ?').run(newArchived || null, req.params.id);
+  res.json({ success: true, archived: false });
+});
+
+app.get('/api/messages/export', authenticateToken, (req, res) => {
+  const ids = req.query.ids ? req.query.ids.split(',') : [];
+  if (ids.length === 0) return res.status(400).json({ error: 'No message IDs provided' });
+
+  const placeholders = ids.map(() => '?').join(',');
+  const messages = db.prepare(`
+    SELECT m.*,
+      sender.username as sender_username, sender.display_name as sender_display_name,
+      c.user1_id, c.user2_id
+    FROM messages m
+    JOIN conversations c ON m.conversation_id = c.id
+    JOIN users sender ON m.sender_id = sender.id
+    WHERE m.id IN (${placeholders})
+      AND (c.user1_id = ? OR c.user2_id = ?)
+    ORDER BY m.created_at ASC
+  `).all(...ids, req.user.id, req.user.id);
+
+  const exportData = messages.map(m => ({
+    von: m.sender_display_name || m.sender_username,
+    datum: new Date(m.created_at).toLocaleString('de-DE'),
+    nachricht: m.content
+  }));
+
+  res.json({ messages: exportData, exported_at: new Date().toISOString() });
+});
+
 app.get('/api/messages/unread-count', authenticateToken, (req, res) => {
   const row = db.prepare(`
     SELECT COUNT(*) as count FROM messages m
@@ -356,6 +479,99 @@ app.get('/api/messages/unread-count', authenticateToken, (req, res) => {
     WHERE (c.user1_id = ? OR c.user2_id = ?) AND m.sender_id != ? AND m.read_at IS NULL
   `).get(req.user.id, req.user.id, req.user.id);
   res.json({ count: row.count || 0 });
+});
+
+// --- FORUM ROUTES ---
+const FORUM_CATEGORIES = [
+  { id: 'general', name: 'Allgemein', icon: '💬' },
+  { id: 'sneakers', name: 'Sneakers', icon: '👟' },
+  { id: 'socks', name: 'Socken', icon: '🧦' },
+  { id: 'collections', name: 'Sammlungen', icon: '📸' },
+  { id: 'trading', name: 'Börse', icon: '💰' },
+  { id: 'offtopic', name: 'Off-Topic', icon: '🎲' }
+];
+
+app.get('/api/forum/categories', authenticateToken, (req, res) => {
+  res.json(FORUM_CATEGORIES);
+});
+
+app.get('/api/forum/topics', authenticateToken, (req, res) => {
+  const category = req.query.category;
+  let query = `
+    SELECT t.*, u.username, u.display_name, u.avatar,
+    (SELECT COUNT(*) FROM forum_replies WHERE topic_id = t.id) as reply_count
+    FROM forum_topics t JOIN users u ON t.user_id = u.id
+  `;
+  const params = [];
+  if (category && category !== 'all') {
+    query += ' WHERE t.category = ?';
+    params.push(category);
+  }
+  query += ' ORDER BY t.pinned DESC, t.updated_at DESC';
+  res.json(db.prepare(query).all(...params));
+});
+
+app.get('/api/forum/topics/:id', authenticateToken, (req, res) => {
+  const topic = db.prepare(`
+    SELECT t.*, u.username, u.display_name, u.avatar
+    FROM forum_topics t JOIN users u ON t.user_id = u.id WHERE t.id = ?
+  `).get(req.params.id);
+  if (!topic) return res.status(404).json({ error: 'Topic not found' });
+  db.prepare('UPDATE forum_topics SET views = views + 1 WHERE id = ?').run(req.params.id);
+  const replies = db.prepare(`
+    SELECT r.*, u.username, u.display_name, u.avatar
+    FROM forum_replies r JOIN users u ON r.user_id = u.id
+    WHERE r.topic_id = ? ORDER BY r.created_at ASC
+  `).all(req.params.id);
+  res.json({ topic: { ...topic, views: topic.views + 1 }, replies });
+});
+
+app.post('/api/forum/topics', authenticateToken, upload.single('image'), (req, res) => {
+  const { title, content, category } = req.body;
+  if (!title || !content) return res.status(400).json({ error: 'Title and content required' });
+  const id = uuidv4();
+  const image = req.file ? saveFileLocally(req.file.buffer, req.file.originalname) : '';
+  db.prepare('INSERT INTO forum_topics (id, user_id, title, content, image, category) VALUES (?, ?, ?, ?, ?, ?)').run(id, req.user.id, title, content, image, category || 'general');
+  const topic = db.prepare(`
+    SELECT t.*, u.username, u.display_name, u.avatar
+    FROM forum_topics t JOIN users u ON t.user_id = u.id WHERE t.id = ?
+  `).get(id);
+  res.json(topic);
+});
+
+app.delete('/api/forum/topics/:id', authenticateToken, (req, res) => {
+  const topic = db.prepare('SELECT * FROM forum_topics WHERE id = ?').get(req.params.id);
+  if (!topic) return res.status(404).json({ error: 'Topic not found' });
+  if (topic.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  db.transaction(() => {
+    db.prepare('DELETE FROM forum_replies WHERE topic_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM forum_topics WHERE id = ?').run(req.params.id);
+  })();
+  res.json({ success: true });
+});
+
+app.post('/api/forum/topics/:id/replies', authenticateToken, upload.single('image'), (req, res) => {
+  const { content } = req.body;
+  if (!content) return res.status(400).json({ error: 'Content required' });
+  const topic = db.prepare('SELECT * FROM forum_topics WHERE id = ?').get(req.params.id);
+  if (!topic) return res.status(404).json({ error: 'Topic not found' });
+  const id = uuidv4();
+  const image = req.file ? saveFileLocally(req.file.buffer, req.file.originalname) : '';
+  db.prepare('INSERT INTO forum_replies (id, topic_id, user_id, content, image) VALUES (?, ?, ?, ?, ?)').run(id, req.params.id, req.user.id, content, image);
+  db.prepare('UPDATE forum_topics SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+  const reply = db.prepare(`
+    SELECT r.*, u.username, u.display_name, u.avatar
+    FROM forum_replies r JOIN users u ON r.user_id = u.id WHERE r.id = ?
+  `).get(id);
+  res.json(reply);
+});
+
+app.delete('/api/forum/replies/:id', authenticateToken, (req, res) => {
+  const reply = db.prepare('SELECT * FROM forum_replies WHERE id = ?').get(req.params.id);
+  if (!reply) return res.status(404).json({ error: 'Reply not found' });
+  if (reply.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  db.prepare('DELETE FROM forum_replies WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
 });
 
 // --- FRONTEND SERVING ---

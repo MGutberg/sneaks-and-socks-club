@@ -69,6 +69,7 @@ function Navbar() {
   const [onlineCount, setOnlineCount] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Heartbeat & Online Counter & Unread Messages Logik
   useEffect(() => {
@@ -91,16 +92,18 @@ function Navbar() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    if (searchQuery.trim()) { navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`); setMobileMenuOpen(false); }
   };
 
   return (
-    <nav className="bg-dark-200 border-b border-dark-100 p-4 sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto flex justify-between items-center h-10">
-        <div className="flex gap-6 items-center">
-          <Link to="/" className="text-white font-bold text-xl">👟 Sneaks & Socks</Link>
+    <nav className="bg-dark-200 border-b border-dark-100 sticky top-0 z-50">
+      {/* Desktop & Mobile Header */}
+      <div className="max-w-6xl mx-auto flex justify-between items-center h-14 px-4">
+        <div className="flex items-center gap-4">
+          <Link to="/" className="text-white font-bold text-lg sm:text-xl">👟 Sneaks & Socks</Link>
 
-          <div className="hidden sm:flex items-center gap-1.5 ml-4">
+          {/* Online Counter & Nav Links - Desktop */}
+          <div className="hidden md:flex items-center gap-1.5">
             <div className="flex items-center gap-1.5 bg-dark-300 px-2.5 py-1 rounded-full border border-dark-100" title="Mitglieder online">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -109,47 +112,87 @@ function Navbar() {
               <span className="text-gray-300 text-xs font-bold">{onlineCount}</span>
             </div>
             <Link to="/members" className="text-gray-400 hover:text-white transition text-sm font-medium ml-1">Members</Link>
+            <Link to="/forum" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">💬 Forum</Link>
           </div>
 
-          {/* Search Input */}
-          <form onSubmit={handleSearch} className="hidden md:flex items-center ml-4">
+          {/* Search Input - Desktop */}
+          <form onSubmit={handleSearch} className="hidden lg:flex items-center">
             <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Suchen..."
-                className="bg-dark-100 text-white text-sm px-4 py-2 pl-9 rounded-xl border border-dark-100 focus:border-red-500 outline-none w-48 transition"
-              />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Suchen..."
+                className="bg-dark-100 text-white text-sm px-4 py-2 pl-9 rounded-xl border border-dark-100 focus:border-red-500 outline-none w-40 transition" />
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
             </div>
           </form>
         </div>
 
         {user && (
-          <div className="flex gap-5 items-center">
+          <div className="flex items-center gap-2 sm:gap-4">
             {/* Messages Icon */}
-            <Link to="/messages" className="relative text-gray-400 hover:text-white transition" title="Nachrichten">
+            <Link to="/messages" className="relative text-gray-400 hover:text-white transition p-2" title="Nachrichten">
               <span className="text-xl">✉️</span>
               {unreadMessages > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                <span className="absolute top-0 right-0 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                   {unreadMessages > 9 ? '9+' : unreadMessages}
                 </span>
               )}
             </Link>
-            <Link to="/create-post" className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm flex items-center gap-2">
-              <span>+</span><span className="hidden sm:inline">Post erstellen</span>
+
+            {/* Create Post - Desktop */}
+            <Link to="/create-post" className="hidden sm:flex bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition shadow-sm items-center gap-1">
+              <span>+</span><span className="hidden md:inline">Post</span>
             </Link>
-            <div className="h-6 w-px bg-dark-100 hidden sm:block"></div>
-            <Link to={`/profile/${user.id}`} className="flex items-center gap-2 hover:opacity-80 transition">
+
+            {/* Profile - Desktop */}
+            <Link to={`/profile/${user.id}`} className="hidden sm:flex items-center hover:opacity-80 transition">
               <div className="w-9 h-9 rounded-full bg-red-950 flex items-center justify-center overflow-hidden border border-dark-100">
                 {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-sm font-bold">{user.username[0].toUpperCase()}</span>}
               </div>
             </Link>
-            <button onClick={() => { logout(); navigate('/login') }} className="text-gray-500 hover:text-red-400 text-sm font-medium transition">Logout</button>
+
+            {/* Logout - Desktop */}
+            <button onClick={() => { logout(); navigate('/login') }} className="hidden sm:block text-gray-500 hover:text-red-400 text-sm font-medium transition">Logout</button>
+
+            {/* Hamburger Menu - Mobile */}
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="sm:hidden p-2 text-white">
+              <span className="text-2xl">{mobileMenuOpen ? '✕' : '☰'}</span>
+            </button>
           </div>
         )}
       </div>
+
+      {/* Mobile Menu */}
+      {user && mobileMenuOpen && (
+        <div className="sm:hidden bg-dark-300 border-t border-dark-100 px-4 py-4 space-y-4">
+          {/* Mobile Search */}
+          <form onSubmit={handleSearch} className="relative">
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Suchen..."
+              className="w-full bg-dark-100 text-white text-sm px-4 py-3 pl-10 rounded-xl border border-dark-100 focus:border-red-500 outline-none" />
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+          </form>
+
+          {/* Mobile Menu Items */}
+          <div className="flex flex-col gap-2">
+            <Link to="/create-post" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-red-600 text-white px-4 py-3 rounded-xl font-bold">
+              <span>+</span> Post erstellen
+            </Link>
+            <Link to={`/profile/${user.id}`} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
+              <div className="w-8 h-8 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-sm font-bold">{user.username[0].toUpperCase()}</span>}
+              </div>
+              Mein Profil
+            </Link>
+            <Link to="/members" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
+              <span>👥</span> Members ({onlineCount} online)
+            </Link>
+            <Link to="/forum" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
+              <span>💬</span> Forum
+            </Link>
+            <button onClick={() => { logout(); navigate('/login'); setMobileMenuOpen(false); }} className="flex items-center gap-3 bg-dark-100 text-red-400 px-4 py-3 rounded-xl text-left">
+              <span>🚪</span> Logout
+            </button>
+          </div>
+        </div>
+      )}
     </nav>
   )
 }
@@ -189,26 +232,23 @@ function Post({ post, onRefresh }) {
   }
 
   return (
-    <div className="bg-dark-200 p-5 rounded-2xl border border-dark-100 mb-6 shadow-md">
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex items-center gap-3">
-          <Link to={`/profile/${post.user_id}`}>
-            {/* ÄNDERUNG: Blau-Hintergrund zu Rot-Hintergrund gewechselt */}
-            <div className="w-12 h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden shadow-inner">
-              {/* ÄNDERUNG: Blau-Text zu Rot-Text gewechselt */}
-              {post.avatar ? <img src={getImageUrl(post.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{post.username[0].toUpperCase()}</span>}
+    <div className="bg-dark-200 p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-dark-100 mb-4 sm:mb-6 shadow-md">
+      <div className="flex justify-between items-start mb-2 sm:mb-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <Link to={`/profile/${post.user_id}`} className="flex-shrink-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden shadow-inner">
+              {post.avatar ? <img src={getImageUrl(post.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-sm sm:text-base">{post.username[0].toUpperCase()}</span>}
             </div>
           </Link>
-          <div>
-            {/* ÄNDERUNG: Blau-Text zu Rot-Text gewechselt bei Hover */}
-            <Link to={`/profile/${post.user_id}`} className="text-white font-bold hover:text-red-400 transition">{post.display_name || post.username}</Link>
+          <div className="min-w-0">
+            <Link to={`/profile/${post.user_id}`} className="text-white font-bold hover:text-red-400 transition text-sm sm:text-base truncate block">{post.display_name || post.username}</Link>
             <p className="text-gray-500 text-xs">@{post.username}</p>
           </div>
         </div>
-        {user?.id === post.user_id && <button onClick={handleDelete} className="text-gray-600 hover:text-red-500 transition" title="Löschen">🗑️</button>}
+        {user?.id === post.user_id && <button onClick={handleDelete} className="text-gray-600 hover:text-red-500 transition p-1 flex-shrink-0" title="Löschen">🗑️</button>}
       </div>
-      <p className="text-gray-200 text-[15px] mt-3 whitespace-pre-wrap leading-relaxed">{post.content}</p>
-      {post.image && <img src={getImageUrl(post.image)} className="mt-4 rounded-xl w-full max-h-[500px] object-cover" />}
+      <p className="text-gray-200 text-sm sm:text-[15px] mt-2 sm:mt-3 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+      {post.image && <img src={getImageUrl(post.image)} className="mt-3 sm:mt-4 rounded-lg sm:rounded-xl w-full max-h-[400px] sm:max-h-[500px] object-cover" />}
       
       {/* Interaction Bar */}
       <div className="flex items-center gap-6 mt-4 pt-4 border-t border-dark-100">
@@ -274,35 +314,32 @@ function CreatePostPage() {
   };
 
   return (
-    <div className="max-w-xl mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold text-white mb-6">Neuen Post erstellen</h1>
-      <form onSubmit={submit} className="bg-dark-200 p-6 rounded-2xl border border-dark-100 shadow-lg">
-        {/* ÄNDERUNG: Blau-Fokus-Rand zu Rot-Fokus gewechselt */}
-        <textarea 
-          value={newPost} 
-          onChange={e => setNewPost(e.target.value)} 
-          className="w-full bg-dark-100 text-white p-4 rounded-xl outline-none resize-none border border-dark-100 focus:border-red-500" 
-          placeholder="Was sind deine Sneaker des Tages?" 
-          rows={5} 
+    <div className="max-w-xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <h1 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">Neuen Post erstellen</h1>
+      <form onSubmit={submit} className="bg-dark-200 p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-dark-100 shadow-lg">
+        <textarea
+          value={newPost}
+          onChange={e => setNewPost(e.target.value)}
+          className="w-full bg-dark-100 text-white p-3 sm:p-4 rounded-xl outline-none resize-none border border-dark-100 focus:border-red-500 text-sm sm:text-base"
+          placeholder="Was sind deine Sneaker des Tages?"
+          rows={4}
         />
         {image && (
-          <div className="mt-4 relative inline-block">
-            <img src={URL.createObjectURL(image)} alt="Preview" className="h-32 rounded-lg object-cover border border-dark-100" />
-            <button type="button" onClick={() => setImage(null)} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold shadow-md">×</button>
+          <div className="mt-3 sm:mt-4 relative inline-block">
+            <img src={URL.createObjectURL(image)} alt="Preview" className="h-24 sm:h-32 rounded-lg object-cover border border-dark-100" />
+            <button type="button" onClick={() => setImage(null)} className="absolute -top-2 -right-2 sm:-top-3 sm:-right-3 bg-red-500 text-white rounded-full w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center font-bold shadow-md text-sm">×</button>
           </div>
         )}
-        <div className="flex justify-between items-center mt-6 pt-4 border-t border-dark-100">
-          {/* ÄNDERUNG: Blau-Hover-Text zu Rot-Hover gewechselt */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mt-4 sm:mt-6 pt-4 border-t border-dark-100">
           <label className="flex items-center gap-2 text-gray-400 hover:text-red-400 cursor-pointer transition">
             <span className="text-xl">📷</span>
-            <span className="font-medium">Foto hinzufügen</span>
+            <span className="font-medium text-sm sm:text-base">Foto hinzufügen</span>
             <input type="file" accept="image/*" onChange={e => setImage(e.target.files[0])} className="hidden" />
           </label>
-          <div className="flex gap-3">
-            <button type="button" onClick={() => navigate('/')} className="bg-dark-100 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-dark-300 transition">Abbrechen</button>
-            {/* ÄNDERUNG: Blau-Button zu Rot-Button gewechselt */}
-            <button disabled={posting || (!newPost.trim() && !image)} className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-bold transition disabled:opacity-50 shadow-md">
-              {posting ? 'Postet...' : 'Veröffentlichen'}
+          <div className="flex gap-2 sm:gap-3">
+            <button type="button" onClick={() => navigate('/')} className="flex-1 sm:flex-none bg-dark-100 text-white px-4 sm:px-5 py-2.5 rounded-xl font-bold hover:bg-dark-300 transition text-sm sm:text-base">Abbrechen</button>
+            <button disabled={posting || (!newPost.trim() && !image)} className="flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white px-4 sm:px-6 py-2.5 rounded-xl font-bold transition disabled:opacity-50 shadow-md text-sm sm:text-base">
+              {posting ? 'Postet...' : 'Posten'}
             </button>
           </div>
         </div>
@@ -407,14 +444,13 @@ function HomePage() {
   useEffect(() => { load() }, []);
 
   return (
-    <div className="max-w-xl mx-auto py-8 px-4">
-      <h2 className="text-xl font-bold text-white mb-6">Dein Feed</h2>
+    <div className="max-w-xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <h2 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-6">Dein Feed</h2>
       {posts.length === 0 ? (
-        <div className="text-center bg-dark-200 p-10 rounded-2xl border border-dark-100">
-          <span className="text-5xl">👀</span>
-          <p className="text-gray-400 mt-4 font-medium">Noch keine Posts vorhanden.<br/>Sei der Erste!</p>
-          {/* ÄNDERUNG: Blau-Button zu Rot-Button gewechselt */}
-          <button onClick={() => window.location.href='/create-post'} className="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg font-bold">Jetzt posten</button>
+        <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl sm:rounded-2xl border border-dark-100">
+          <span className="text-4xl sm:text-5xl">👀</span>
+          <p className="text-gray-400 mt-3 sm:mt-4 font-medium text-sm sm:text-base">Noch keine Posts vorhanden.<br/>Sei der Erste!</p>
+          <button onClick={() => window.location.href='/create-post'} className="mt-4 bg-red-600 text-white px-5 sm:px-6 py-2 rounded-lg font-bold text-sm sm:text-base">Jetzt posten</button>
         </div>
       ) : (
         posts.map(p => <Post key={p.id} post={p} onRefresh={load} />)
@@ -513,23 +549,21 @@ function ProfilePage() {
   if (!profile) return <div className="text-white p-10 text-center">Lade Profil...</div>;
 
   return (
-    <div className="max-w-2xl mx-auto p-4 py-8">
-      <div className="bg-dark-200 rounded-3xl p-8 border border-dark-100 mb-8 shadow-lg">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left">
-          {/* ÄNDERUNG: Blau-Hintergrund zu Rot-Hintergrund gewechselt */}
-          <div className="w-32 h-32 rounded-full bg-red-950 flex-shrink-0 flex items-center justify-center overflow-hidden border-4 border-dark-100 shadow-xl relative">
-            {/* ÄNDERUNG: Blau-Text zu Rot-Text gewechselt */}
-            {profile.avatar ? <img src={getImageUrl(profile.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-5xl font-bold">{profile.username[0].toUpperCase()}</span>}
+    <div className="max-w-2xl mx-auto p-3 sm:p-4 py-4 sm:py-8">
+      <div className="bg-dark-200 rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-dark-100 mb-4 sm:mb-8 shadow-lg">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 text-center sm:text-left">
+          {/* Avatar */}
+          <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-red-950 flex-shrink-0 flex items-center justify-center overflow-hidden border-4 border-dark-100 shadow-xl relative">
+            {profile.avatar ? <img src={getImageUrl(profile.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-4xl sm:text-5xl font-bold">{profile.username[0].toUpperCase()}</span>}
           </div>
-          <div className="flex-1 w-full">
-            <h1 className="text-3xl font-bold text-white">{profile.display_name || profile.username}</h1>
-            {/* ÄNDERUNG: Blau-Text zu Rot-Text gewechselt */}
-            <p className="text-red-500 font-medium text-lg">@{profile.username}</p>
-            {profile.bio && <p className="text-gray-300 mt-4 italic">"{profile.bio}"</p>}
-            
-            <div className="flex flex-wrap justify-center sm:justify-start gap-4 mt-6 text-sm text-gray-400 bg-dark-100 p-4 rounded-xl">
+          <div className="flex-1 w-full min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white truncate">{profile.display_name || profile.username}</h1>
+            <p className="text-red-500 font-medium text-base sm:text-lg">@{profile.username}</p>
+            {profile.bio && <p className="text-gray-300 mt-3 sm:mt-4 italic text-sm sm:text-base">"{profile.bio}"</p>}
+
+            <div className="flex flex-wrap justify-center sm:justify-start gap-2 sm:gap-4 mt-4 sm:mt-6 text-xs sm:text-sm text-gray-400 bg-dark-100 p-3 sm:p-4 rounded-xl">
               {profile.location && <span className="flex items-center gap-1">📍 <strong className="text-white">{profile.location}</strong></span>}
-              {profile.website && <span className="flex items-center gap-1">🔗 <button onClick={() => setExternalLinkModal(profile.website)} className="text-red-400 hover:underline text-left">{profile.website}</button></span>}
+              {profile.website && <span className="flex items-center gap-1 max-w-full overflow-hidden">🔗 <button onClick={() => setExternalLinkModal(profile.website)} className="text-red-400 hover:underline text-left truncate">{profile.website}</button></span>}
               <span className="flex items-center gap-1">📝 <strong className="text-white">{posts.length}</strong> Posts</span>
               <button onClick={loadFollowers} className="flex items-center gap-1 hover:text-white transition cursor-pointer">
                 👥 <strong className="text-white">{followerCount}</strong> Follower
@@ -726,7 +760,12 @@ function ProfilePage() {
 
 // --- MESSAGES PAGE ---
 function MessagesPage() {
+  const [activeTab, setActiveTab] = useState('conversations');
   const [conversations, setConversations] = useState([]);
+  const [inboxMessages, setInboxMessages] = useState([]);
+  const [sentMessages, setSentMessages] = useState([]);
+  const [archivedMessages, setArchivedMessages] = useState([]);
+  const [selectedMessages, setSelectedMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -735,22 +774,31 @@ function MessagesPage() {
   const navigate = useNavigate();
   const apiFetch = useApi();
 
-  const loadConversations = async () => {
+  const loadData = async () => {
+    setLoading(true);
     try {
-      const data = await apiFetch('/api/conversations');
-      setConversations(data);
+      if (activeTab === 'conversations') {
+        const data = await apiFetch('/api/conversations');
+        setConversations(data);
+      } else if (activeTab === 'inbox') {
+        const data = await apiFetch('/api/messages/inbox');
+        setInboxMessages(data);
+      } else if (activeTab === 'sent') {
+        const data = await apiFetch('/api/messages/sent');
+        setSentMessages(data);
+      } else if (activeTab === 'archived') {
+        const data = await apiFetch('/api/messages/archived');
+        setArchivedMessages(data);
+      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { loadConversations(); }, []);
+  useEffect(() => { loadData(); setSelectedMessages([]); }, [activeTab]);
 
   const handleSearch = async (query) => {
     setSearchQuery(query);
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
+    if (!query.trim()) { setSearchResults([]); return; }
     setSearching(true);
     try {
       const data = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
@@ -761,56 +809,172 @@ function MessagesPage() {
 
   const startConversation = async (userId) => {
     try {
-      const conv = await apiFetch('/api/conversations', {
-        method: 'POST',
-        body: JSON.stringify({ user_id: userId })
-      });
+      const conv = await apiFetch('/api/conversations', { method: 'POST', body: JSON.stringify({ user_id: userId }) });
       navigate(`/messages/${conv.id}`);
     } catch (e) { console.error(e); }
   };
 
+  const toggleSelect = (id) => {
+    setSelectedMessages(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]);
+  };
+
+  const archiveSelected = async () => {
+    for (const id of selectedMessages) {
+      await apiFetch(`/api/messages/${id}/archive`, { method: 'POST' });
+    }
+    setSelectedMessages([]);
+    loadData();
+  };
+
+  const unarchiveSelected = async () => {
+    for (const id of selectedMessages) {
+      await apiFetch(`/api/messages/${id}/unarchive`, { method: 'POST' });
+    }
+    setSelectedMessages([]);
+    loadData();
+  };
+
+  const downloadSelected = async () => {
+    if (selectedMessages.length === 0) return;
+    try {
+      const data = await apiFetch(`/api/messages/export?ids=${selectedMessages.join(',')}`);
+      const text = data.messages.map(m => `Von: ${m.von}\nDatum: ${m.datum}\n\n${m.nachricht}\n\n---\n`).join('\n');
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nachrichten_archiv_${new Date().toISOString().split('T')[0]}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { console.error(e); }
+  };
+
+  const tabs = [
+    { id: 'conversations', label: 'Chats', icon: '💬' },
+    { id: 'inbox', label: 'Empfangen', icon: '📥' },
+    { id: 'sent', label: 'Gesendet', icon: '📤' },
+    { id: 'archived', label: 'Archiv', icon: '📁' }
+  ];
+
+  const renderMessageItem = (msg, type) => {
+    const isSelected = selectedMessages.includes(msg.id);
+    const showCheckbox = activeTab !== 'conversations';
+    const senderName = type === 'sent' ? (msg.recipient_display_name || msg.recipient_username) : (msg.sender_display_name || msg.sender_username || msg.display_name || msg.username);
+    const senderAvatar = type === 'sent' ? msg.recipient_avatar : (msg.sender_avatar || msg.avatar);
+    const senderUsername = type === 'sent' ? msg.recipient_username : (msg.sender_username || msg.username);
+
+    return (
+      <div key={msg.id} className={`flex items-center gap-2 sm:gap-3 bg-dark-200 p-3 sm:p-4 rounded-xl border transition ${isSelected ? 'border-red-500' : 'border-dark-100'}`}>
+        {showCheckbox && (
+          <button onClick={() => toggleSelect(msg.id)} className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition ${isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'}`}>
+            {isSelected && <span className="text-white text-xs">✓</span>}
+          </button>
+        )}
+        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden flex-shrink-0">
+          {senderAvatar ? <img src={getImageUrl(senderAvatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-sm">{(senderUsername || '?')[0].toUpperCase()}</span>}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-white font-bold text-sm truncate">{senderName}</p>
+            {type === 'sent' && <span className="text-xs bg-dark-100 px-1.5 py-0.5 rounded text-gray-400">Gesendet</span>}
+            {type === 'archived' && <span className="text-xs bg-dark-100 px-1.5 py-0.5 rounded text-gray-400">{msg.direction === 'sent' ? 'Gesendet' : 'Empfangen'}</span>}
+          </div>
+          <p className="text-gray-400 text-xs sm:text-sm truncate mt-0.5">{msg.content}</p>
+        </div>
+        <span className="text-gray-500 text-xs flex-shrink-0">{new Date(msg.created_at).toLocaleDateString('de-DE')}</span>
+      </div>
+    );
+  };
+
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-white">Nachrichten</h1>
-        <button
-          onClick={() => setShowNewMessage(true)}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold transition shadow-md flex items-center gap-2"
-        >
-          <span>+</span> Neue Nachricht
+    <div className="max-w-2xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <div className="flex justify-between items-center mb-4 gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Nachrichten</h1>
+        <button onClick={() => setShowNewMessage(true)} className="bg-red-600 hover:bg-red-700 text-white px-3 sm:px-4 py-2 rounded-xl font-bold transition shadow-md flex items-center gap-1 sm:gap-2 text-sm">
+          <span>+</span> <span className="hidden sm:inline">Neu</span>
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 sm:gap-2 mb-4 overflow-x-auto scrollbar-hide pb-1">
+        {tabs.map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-shrink-0 px-3 sm:px-4 py-2 rounded-xl font-medium text-sm transition flex items-center gap-1.5 ${activeTab === tab.id ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>
+            <span>{tab.icon}</span> <span className="hidden sm:inline">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Action Bar */}
+      {selectedMessages.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 p-3 bg-dark-200 rounded-xl border border-dark-100">
+          <span className="text-white text-sm">{selectedMessages.length} ausgewählt</span>
+          <div className="flex-1" />
+          {activeTab === 'archived' ? (
+            <button onClick={unarchiveSelected} className="text-sm bg-dark-100 text-white px-3 py-1.5 rounded-lg hover:bg-dark-300 transition">Wiederherstellen</button>
+          ) : (
+            <button onClick={archiveSelected} className="text-sm bg-dark-100 text-white px-3 py-1.5 rounded-lg hover:bg-dark-300 transition">Archivieren</button>
+          )}
+          {activeTab === 'archived' && (
+            <button onClick={downloadSelected} className="text-sm bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition">⬇ Download</button>
+          )}
+        </div>
+      )}
+
       {loading ? (
-        <div className="text-center text-gray-400 py-10">Lade Konversationen...</div>
-      ) : conversations.length === 0 ? (
-        <div className="text-center bg-dark-200 p-10 rounded-2xl border border-dark-100">
-          <span className="text-5xl">✉️</span>
-          <p className="text-gray-400 mt-4 font-medium">Noch keine Nachrichten</p>
-          <p className="text-gray-500 text-sm mt-2">Klicke auf "Neue Nachricht" um loszulegen</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {conversations.map(conv => (
-            <Link key={conv.id} to={`/messages/${conv.id}`} className="flex items-center gap-4 bg-dark-200 p-4 rounded-xl border border-dark-100 hover:border-red-500 transition">
-              <div className="relative">
-                <div className="w-14 h-14 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
-                  {conv.other_avatar ? <img src={getImageUrl(conv.other_avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-xl font-bold">{conv.other_username[0].toUpperCase()}</span>}
+        <div className="text-center text-gray-400 py-10">Lade...</div>
+      ) : activeTab === 'conversations' ? (
+        conversations.length === 0 ? (
+          <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl border border-dark-100">
+            <span className="text-4xl">💬</span>
+            <p className="text-gray-400 mt-3 font-medium text-sm">Noch keine Chats</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {conversations.map(conv => (
+              <Link key={conv.id} to={`/messages/${conv.id}`} className="flex items-center gap-3 bg-dark-200 p-3 sm:p-4 rounded-xl border border-dark-100 hover:border-red-500 transition">
+                <div className="relative flex-shrink-0">
+                  <div className="w-12 h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                    {conv.other_avatar ? <img src={getImageUrl(conv.other_avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{conv.other_username[0].toUpperCase()}</span>}
+                  </div>
+                  {conv.unread_count > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{conv.unread_count > 9 ? '9+' : conv.unread_count}</span>}
                 </div>
-                {conv.unread_count > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {conv.unread_count > 9 ? '9+' : conv.unread_count}
-                  </span>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-bold">{conv.other_display_name || conv.other_username}</p>
-                <p className="text-gray-400 text-sm truncate">{conv.last_message || 'Keine Nachrichten'}</p>
-              </div>
-              <span className="text-gray-500 text-xs">{new Date(conv.last_message_at).toLocaleDateString('de-DE')}</span>
-            </Link>
-          ))}
-        </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold text-sm truncate">{conv.other_display_name || conv.other_username}</p>
+                  <p className="text-gray-400 text-xs truncate">{conv.last_message || 'Keine Nachrichten'}</p>
+                </div>
+                <span className="text-gray-500 text-xs">{new Date(conv.last_message_at).toLocaleDateString('de-DE')}</span>
+              </Link>
+            ))}
+          </div>
+        )
+      ) : activeTab === 'inbox' ? (
+        inboxMessages.length === 0 ? (
+          <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl border border-dark-100">
+            <span className="text-4xl">📥</span>
+            <p className="text-gray-400 mt-3 font-medium text-sm">Keine empfangenen Nachrichten</p>
+          </div>
+        ) : (
+          <div className="space-y-2">{inboxMessages.map(msg => renderMessageItem(msg, 'inbox'))}</div>
+        )
+      ) : activeTab === 'sent' ? (
+        sentMessages.length === 0 ? (
+          <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl border border-dark-100">
+            <span className="text-4xl">📤</span>
+            <p className="text-gray-400 mt-3 font-medium text-sm">Keine gesendeten Nachrichten</p>
+          </div>
+        ) : (
+          <div className="space-y-2">{sentMessages.map(msg => renderMessageItem(msg, 'sent'))}</div>
+        )
+      ) : (
+        archivedMessages.length === 0 ? (
+          <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl border border-dark-100">
+            <span className="text-4xl">📁</span>
+            <p className="text-gray-400 mt-3 font-medium text-sm">Archiv ist leer</p>
+            <p className="text-gray-500 text-xs mt-1">Markiere Nachrichten und archiviere sie</p>
+          </div>
+        ) : (
+          <div className="space-y-2">{archivedMessages.map(msg => renderMessageItem(msg, 'archived'))}</div>
+        )
       )}
 
       {/* Neue Nachricht Modal */}
@@ -823,29 +987,16 @@ function MessagesPage() {
             </div>
             <div className="p-4">
               <div className="relative mb-4">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  placeholder="Benutzer suchen..."
-                  className="w-full bg-dark-100 text-white p-3 pl-10 rounded-xl border border-dark-100 focus:border-red-500 outline-none"
-                  autoFocus
-                />
+                <input type="text" value={searchQuery} onChange={(e) => handleSearch(e.target.value)} placeholder="Benutzer suchen..." className="w-full bg-dark-100 text-white p-3 pl-10 rounded-xl border border-dark-100 focus:border-red-500 outline-none" autoFocus />
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
               </div>
               <div className="overflow-y-auto max-h-[50vh]">
-                {searching ? (
-                  <p className="text-gray-400 text-center py-4">Suche...</p>
-                ) : searchQuery.trim() && searchResults.length === 0 ? (
-                  <p className="text-gray-400 text-center py-4">Keine Benutzer gefunden</p>
-                ) : searchResults.length > 0 ? (
+                {searching ? <p className="text-gray-400 text-center py-4">Suche...</p>
+                : searchQuery.trim() && searchResults.length === 0 ? <p className="text-gray-400 text-center py-4">Keine Benutzer gefunden</p>
+                : searchResults.length > 0 ? (
                   <div className="space-y-2">
                     {searchResults.map(user => (
-                      <button
-                        key={user.id}
-                        onClick={() => startConversation(user.id)}
-                        className="w-full flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition text-left"
-                      >
+                      <button key={user.id} onClick={() => startConversation(user.id)} className="w-full flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition text-left">
                         <div className="w-10 h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
                           {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{user.username[0].toUpperCase()}</span>}
                         </div>
@@ -856,9 +1007,7 @@ function MessagesPage() {
                       </button>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-gray-500 text-center py-4 text-sm">Gib einen Namen ein um Benutzer zu finden</p>
-                )}
+                ) : <p className="text-gray-500 text-center py-4 text-sm">Gib einen Namen ein um Benutzer zu finden</p>}
               </div>
             </div>
           </div>
@@ -926,19 +1075,19 @@ function ConversationPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto py-4 px-4 flex flex-col h-[calc(100vh-80px)]">
+    <div className="max-w-2xl mx-auto p-2 sm:p-4 flex flex-col" style={{ height: 'calc(100dvh - 56px)' }}>
       {/* Header */}
-      <div className="flex items-center gap-4 bg-dark-200 p-4 rounded-xl border border-dark-100 mb-4">
-        <Link to={`/profile/${otherUser.id}`} className="flex items-center gap-4 flex-1 hover:opacity-80 transition">
-          <div className="w-12 h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
-            {otherUser.avatar ? <img src={getImageUrl(otherUser.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{otherUser.username[0].toUpperCase()}</span>}
+      <div className="flex items-center gap-2 sm:gap-4 bg-dark-200 p-3 sm:p-4 rounded-xl border border-dark-100 mb-2 sm:mb-4 flex-shrink-0">
+        <Link to={`/profile/${otherUser.id}`} className="flex items-center gap-2 sm:gap-4 flex-1 hover:opacity-80 transition min-w-0">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden flex-shrink-0">
+            {otherUser.avatar ? <img src={getImageUrl(otherUser.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-sm sm:text-base">{otherUser.username[0].toUpperCase()}</span>}
           </div>
-          <div>
-            <p className="text-white font-bold">{otherUser.display_name || otherUser.username}</p>
-            <p className="text-red-500 text-sm">@{otherUser.username}</p>
+          <div className="min-w-0">
+            <p className="text-white font-bold text-sm sm:text-base truncate">{otherUser.display_name || otherUser.username}</p>
+            <p className="text-red-500 text-xs sm:text-sm truncate">@{otherUser.username}</p>
           </div>
         </Link>
-        <Link to="/messages" className="text-gray-400 hover:text-white transition">← Zurück</Link>
+        <Link to="/messages" className="text-gray-400 hover:text-white transition text-sm flex-shrink-0">← Zurück</Link>
       </div>
 
       {/* Messages */}
@@ -950,8 +1099,8 @@ function ConversationPage() {
             const isOwn = msg.sender_id === currentUser.id;
             return (
               <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[70%] px-4 py-3 rounded-2xl ${isOwn ? 'bg-red-600 text-white' : 'bg-dark-100 text-gray-200'}`}>
-                  <p className="break-words">{msg.content}</p>
+                <div className={`max-w-[85%] sm:max-w-[70%] px-3 sm:px-4 py-2 sm:py-3 rounded-2xl ${isOwn ? 'bg-red-600 text-white' : 'bg-dark-100 text-gray-200'}`}>
+                  <p className="break-words text-sm sm:text-base">{msg.content}</p>
                   <p className={`text-xs mt-1 ${isOwn ? 'text-red-200' : 'text-gray-500'}`}>
                     {new Date(msg.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
                   </p>
@@ -964,21 +1113,339 @@ function ConversationPage() {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSend} className="mt-4 flex gap-3">
+      <form onSubmit={handleSend} className="mt-2 sm:mt-4 flex gap-2 sm:gap-3 flex-shrink-0">
         <input
           type="text"
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Schreibe eine Nachricht..."
-          className="flex-1 bg-dark-100 text-white p-4 rounded-xl border border-dark-100 focus:border-red-500 outline-none"
+          placeholder="Nachricht..."
+          className="flex-1 bg-dark-100 text-white p-3 sm:p-4 rounded-xl border border-dark-100 focus:border-red-500 outline-none text-sm sm:text-base min-w-0"
         />
         <button
           type="submit"
           disabled={!newMessage.trim() || sending}
-          className="bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-xl font-bold transition disabled:opacity-50"
+          className="bg-red-600 hover:bg-red-700 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-xl font-bold transition disabled:opacity-50 flex-shrink-0 text-sm sm:text-base"
         >
-          {sending ? '...' : 'Senden'}
+          {sending ? '...' : '➤'}
         </button>
+      </form>
+    </div>
+  );
+}
+
+// --- FORUM PAGES ---
+function ForumPage() {
+  const [topics, setTopics] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [cats, tops] = await Promise.all([
+          apiFetch('/api/forum/categories'),
+          apiFetch(`/api/forum/topics${selectedCategory !== 'all' ? `?category=${selectedCategory}` : ''}`)
+        ]);
+        setCategories(cats);
+        setTopics(tops);
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
+    };
+    loadData();
+  }, [selectedCategory]);
+
+  const getCategoryInfo = (catId) => categories.find(c => c.id === catId) || { name: 'Allgemein', icon: '💬' };
+
+  return (
+    <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Forum</h1>
+        <button onClick={() => navigate('/forum/new')} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-bold transition shadow-md flex items-center justify-center gap-2 text-sm sm:text-base">
+          <span>+</span> Neues Thema
+        </button>
+      </div>
+
+      {/* Kategorien */}
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 sm:mb-6 scrollbar-hide">
+        <button onClick={() => setSelectedCategory('all')} className={`flex-shrink-0 px-3 sm:px-4 py-2 rounded-xl font-medium text-sm transition ${selectedCategory === 'all' ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>
+          Alle
+        </button>
+        {categories.map(cat => (
+          <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className={`flex-shrink-0 px-3 sm:px-4 py-2 rounded-xl font-medium text-sm transition flex items-center gap-1.5 ${selectedCategory === cat.id ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>
+            <span>{cat.icon}</span> <span className="hidden sm:inline">{cat.name}</span>
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="text-center text-gray-400 py-10">Lade Forum...</div>
+      ) : topics.length === 0 ? (
+        <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl sm:rounded-2xl border border-dark-100">
+          <span className="text-4xl sm:text-5xl">💬</span>
+          <p className="text-gray-400 mt-3 sm:mt-4 font-medium text-sm sm:text-base">Noch keine Themen vorhanden</p>
+          <button onClick={() => navigate('/forum/new')} className="mt-4 bg-red-600 text-white px-5 py-2 rounded-lg font-bold text-sm sm:text-base">Erstes Thema erstellen</button>
+        </div>
+      ) : (
+        <div className="space-y-2 sm:space-y-3">
+          {topics.map(topic => {
+            const cat = getCategoryInfo(topic.category);
+            return (
+              <Link key={topic.id} to={`/forum/${topic.id}`} className="block bg-dark-200 p-3 sm:p-4 rounded-xl border border-dark-100 hover:border-red-500 active:scale-[0.99] transition">
+                <div className="flex gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {topic.avatar ? <img src={getImageUrl(topic.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-sm sm:text-base">{topic.username[0].toUpperCase()}</span>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        {topic.pinned === 1 && <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded mr-2">Angepinnt</span>}
+                        <h3 className="text-white font-bold text-sm sm:text-base truncate">{topic.title}</h3>
+                      </div>
+                      <span className="text-xs bg-dark-100 px-2 py-1 rounded-lg flex-shrink-0 hidden sm:flex items-center gap-1">
+                        {cat.icon} {cat.name}
+                      </span>
+                    </div>
+                    <p className="text-gray-400 text-xs sm:text-sm mt-1 line-clamp-1">{topic.content}</p>
+                    <div className="flex items-center gap-3 sm:gap-4 mt-2 text-xs text-gray-500">
+                      <span>@{topic.username}</span>
+                      <span className="flex items-center gap-1">💬 {topic.reply_count || 0}</span>
+                      <span className="flex items-center gap-1">👁 {topic.views || 0}</span>
+                      <span className="hidden sm:inline">{new Date(topic.created_at).toLocaleDateString('de-DE')}</span>
+                    </div>
+                  </div>
+                  {topic.image && <img src={getImageUrl(topic.image)} className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover flex-shrink-0 hidden sm:block" />}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ForumTopicPage() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const [topic, setTopic] = useState(null);
+  const [replies, setReplies] = useState([]);
+  const [newReply, setNewReply] = useState('');
+  const [replyImage, setReplyImage] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+
+  const loadTopic = async () => {
+    try {
+      const data = await apiFetch(`/api/forum/topics/${id}`);
+      setTopic(data.topic);
+      setReplies(data.replies);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadTopic(); }, [id]);
+
+  const handleReplySubmit = async (e) => {
+    e.preventDefault();
+    if (!newReply.trim() || sending) return;
+    setSending(true);
+    try {
+      const fd = new FormData();
+      fd.append('content', newReply);
+      if (replyImage) fd.append('image', replyImage);
+      const reply = await apiFetch(`/api/forum/topics/${id}/replies`, { method: 'POST', body: fd });
+      setReplies([...replies, reply]);
+      setNewReply('');
+      setReplyImage(null);
+    } catch (e) { console.error(e); }
+    finally { setSending(false); }
+  };
+
+  const handleDeleteTopic = async () => {
+    if (!window.confirm('Thema wirklich löschen?')) return;
+    try {
+      await apiFetch(`/api/forum/topics/${id}`, { method: 'DELETE' });
+      navigate('/forum');
+    } catch (e) { console.error(e); }
+  };
+
+  const handleDeleteReply = async (replyId) => {
+    if (!window.confirm('Antwort wirklich löschen?')) return;
+    try {
+      await apiFetch(`/api/forum/replies/${replyId}`, { method: 'DELETE' });
+      setReplies(replies.filter(r => r.id !== replyId));
+    } catch (e) { console.error(e); }
+  };
+
+  if (loading) return <div className="max-w-4xl mx-auto py-8 px-4 text-center text-gray-400">Lade Thema...</div>;
+  if (!topic) return <div className="max-w-4xl mx-auto py-8 px-4 text-center text-gray-400">Thema nicht gefunden</div>;
+
+  return (
+    <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      {/* Back Button */}
+      <Link to="/forum" className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition mb-4 text-sm">
+        ← Zurück zum Forum
+      </Link>
+
+      {/* Topic */}
+      <div className="bg-dark-200 p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-dark-100 mb-4 sm:mb-6">
+        <div className="flex justify-between items-start gap-3 mb-3 sm:mb-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <Link to={`/profile/${topic.user_id}`} className="flex-shrink-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                {topic.avatar ? <img src={getImageUrl(topic.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{topic.username[0].toUpperCase()}</span>}
+              </div>
+            </Link>
+            <div className="min-w-0">
+              <Link to={`/profile/${topic.user_id}`} className="text-white font-bold hover:text-red-400 transition text-sm sm:text-base">{topic.display_name || topic.username}</Link>
+              <p className="text-gray-500 text-xs">@{topic.username} · {new Date(topic.created_at).toLocaleDateString('de-DE')}</p>
+            </div>
+          </div>
+          {user?.id === topic.user_id && (
+            <button onClick={handleDeleteTopic} className="text-gray-600 hover:text-red-500 transition p-1" title="Löschen">🗑️</button>
+          )}
+        </div>
+        <h1 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">{topic.title}</h1>
+        <p className="text-gray-200 text-sm sm:text-base whitespace-pre-wrap leading-relaxed">{topic.content}</p>
+        {topic.image && <img src={getImageUrl(topic.image)} className="mt-3 sm:mt-4 rounded-lg sm:rounded-xl w-full max-h-[400px] sm:max-h-[500px] object-cover" />}
+        <div className="flex items-center gap-4 mt-4 pt-4 border-t border-dark-100 text-xs sm:text-sm text-gray-500">
+          <span className="flex items-center gap-1">💬 {replies.length} Antworten</span>
+          <span className="flex items-center gap-1">👁 {topic.views} Aufrufe</span>
+        </div>
+      </div>
+
+      {/* Replies */}
+      <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6">
+        {replies.map(reply => (
+          <div key={reply.id} className="bg-dark-200 p-3 sm:p-4 rounded-xl border border-dark-100">
+            <div className="flex justify-between items-start gap-2 mb-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Link to={`/profile/${reply.user_id}`} className="flex-shrink-0">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                    {reply.avatar ? <img src={getImageUrl(reply.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-xs sm:text-sm">{reply.username[0].toUpperCase()}</span>}
+                  </div>
+                </Link>
+                <div className="min-w-0">
+                  <Link to={`/profile/${reply.user_id}`} className="text-white font-bold hover:text-red-400 transition text-sm">{reply.display_name || reply.username}</Link>
+                  <p className="text-gray-500 text-xs">{new Date(reply.created_at).toLocaleDateString('de-DE')}</p>
+                </div>
+              </div>
+              {user?.id === reply.user_id && (
+                <button onClick={() => handleDeleteReply(reply.id)} className="text-gray-600 hover:text-red-500 transition p-1 text-sm">🗑️</button>
+              )}
+            </div>
+            <p className="text-gray-200 text-sm whitespace-pre-wrap">{reply.content}</p>
+            {reply.image && <img src={getImageUrl(reply.image)} className="mt-2 sm:mt-3 rounded-lg w-full max-h-[300px] object-cover" />}
+          </div>
+        ))}
+      </div>
+
+      {/* Reply Form */}
+      <form onSubmit={handleReplySubmit} className="bg-dark-200 p-4 sm:p-5 rounded-xl border border-dark-100">
+        <h3 className="text-white font-bold mb-3 text-sm sm:text-base">Antwort schreiben</h3>
+        <textarea
+          value={newReply}
+          onChange={e => setNewReply(e.target.value)}
+          placeholder="Deine Antwort..."
+          className="w-full bg-dark-100 text-white p-3 rounded-xl outline-none resize-none border border-dark-100 focus:border-red-500 text-sm"
+          rows={3}
+        />
+        {replyImage && (
+          <div className="mt-3 relative inline-block">
+            <img src={URL.createObjectURL(replyImage)} alt="Preview" className="h-20 sm:h-24 rounded-lg object-cover border border-dark-100" />
+            <button type="button" onClick={() => setReplyImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold shadow-md text-sm">×</button>
+          </div>
+        )}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mt-3">
+          <label className="flex items-center gap-2 text-gray-400 hover:text-red-400 cursor-pointer transition text-sm">
+            <span>📷</span> <span>Bild hinzufügen</span>
+            <input type="file" accept="image/*" onChange={e => setReplyImage(e.target.files[0])} className="hidden" />
+          </label>
+          <button disabled={!newReply.trim() || sending} className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl font-bold transition disabled:opacity-50 text-sm">
+            {sending ? 'Sendet...' : 'Antworten'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function CreateForumTopicPage() {
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState('general');
+  const [image, setImage] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [posting, setPosting] = useState(false);
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    apiFetch('/api/forum/categories').then(setCategories).catch(console.error);
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !content.trim()) return;
+    setPosting(true);
+    try {
+      const fd = new FormData();
+      fd.append('title', title);
+      fd.append('content', content);
+      fd.append('category', category);
+      if (image) fd.append('image', image);
+      const topic = await apiFetch('/api/forum/topics', { method: 'POST', body: fd });
+      navigate(`/forum/${topic.id}`);
+    } catch (e) { alert('Fehler beim Erstellen: ' + e.message); }
+    finally { setPosting(false); }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <Link to="/forum" className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition mb-4 text-sm">
+        ← Zurück zum Forum
+      </Link>
+      <h1 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">Neues Thema erstellen</h1>
+      <form onSubmit={handleSubmit} className="bg-dark-200 p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-dark-100 shadow-lg">
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Kategorie</label>
+          <select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none text-sm">
+            {categories.map(cat => (
+              <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Titel</label>
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Worum geht es?" className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none text-sm" required />
+        </div>
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Inhalt</label>
+          <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Beschreibe dein Thema..." className="w-full bg-dark-100 text-white p-3 rounded-xl outline-none resize-none border border-dark-100 focus:border-red-500 text-sm" rows={5} required />
+        </div>
+        {image && (
+          <div className="mb-4 relative inline-block">
+            <img src={URL.createObjectURL(image)} alt="Preview" className="h-24 sm:h-32 rounded-lg object-cover border border-dark-100" />
+            <button type="button" onClick={() => setImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold shadow-md text-sm">×</button>
+          </div>
+        )}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-4 border-t border-dark-100">
+          <label className="flex items-center gap-2 text-gray-400 hover:text-red-400 cursor-pointer transition text-sm">
+            <span>📷</span> <span>Bild hinzufügen</span>
+            <input type="file" accept="image/*" onChange={e => setImage(e.target.files[0])} className="hidden" />
+          </label>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => navigate('/forum')} className="flex-1 sm:flex-none bg-dark-100 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-dark-300 transition text-sm">Abbrechen</button>
+            <button disabled={posting || !title.trim() || !content.trim()} className="flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl font-bold transition disabled:opacity-50 text-sm">
+              {posting ? 'Erstellt...' : 'Veröffentlichen'}
+            </button>
+          </div>
+        </div>
       </form>
     </div>
   );
@@ -989,30 +1456,29 @@ function MembersPage() {
   const [members, setMembers] = useState([]);
   const [gallery, setGallery] = useState([]);
   const apiFetch = useApi();
-  
-  // ÄNDERUNG: Daten für Galerie und Mitglieder laden
-  useEffect(() => { 
+
+  useEffect(() => {
     apiFetch('/api/users').then(setMembers).catch(console.error);
     apiFetch('/api/posts/gallery').then(setGallery).catch(console.error);
   }, []);
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4">
-      {/* GIMMICK ABSCHNITT (NEU) */}
-      <div className="mb-12">
-        <h1 className="text-3xl font-bold text-white mb-1.5">Community-Galerie</h1>
-        <p className="text-gray-400 mb-8 font-medium">Die neuesten Kicks und Styles der Community 👀</p>
-        
+    <div className="max-w-6xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      {/* GIMMICK ABSCHNITT */}
+      <div className="mb-8 sm:mb-12">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">Community-Galerie</h1>
+        <p className="text-gray-400 mb-4 sm:mb-8 font-medium text-sm sm:text-base">Die neuesten Kicks und Styles der Community 👀</p>
+
         {gallery.length === 0 ? (
-          <div className="text-center bg-dark-200 p-10 rounded-2xl border border-dark-100"><p className="text-gray-400 font-medium">Noch keine Bilder hochgeladen.</p></div>
+          <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl sm:rounded-2xl border border-dark-100"><p className="text-gray-400 font-medium text-sm sm:text-base">Noch keine Bilder hochgeladen.</p></div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4">
             {gallery.map(post => (
-              <Link key={post.id} to={`/`} className="group relative block aspect-square rounded-2xl overflow-hidden border border-dark-100 bg-dark-200 hover:border-red-500 transition shadow-md">
+              <Link key={post.id} to={`/`} className="group relative block aspect-square rounded-xl sm:rounded-2xl overflow-hidden border border-dark-100 bg-dark-200 hover:border-red-500 transition shadow-md">
                 <img src={getImageUrl(post.image)} alt={post.content} className="w-full h-full object-cover group-hover:scale-110 transition duration-300" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition duration-300">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-dark-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-dark-100 shadow-sm">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-2 sm:p-3 flex flex-col justify-end opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition duration-300">
+                  <div className="flex items-center gap-1 sm:gap-2">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-dark-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-dark-100 shadow-sm">
                       {post.avatar ? <img src={getImageUrl(post.avatar)} className="w-full h-full object-cover" /> : <span className="text-gray-400 text-xs font-bold">{post.username[0].toUpperCase()}</span>}
                     </div>
                     <p className="text-white text-xs font-bold truncate">@{post.username}</p>
@@ -1023,26 +1489,22 @@ function MembersPage() {
           </div>
         )}
       </div>
-      
-      {/* MITGLIEDER LISTE (BEIBEHALTEN) */}
-      <h2 className="text-2xl font-bold text-white mb-8 pl-1">Alle Mitglieder</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+
+      {/* MITGLIEDER LISTE */}
+      <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-8 pl-1">Alle Mitglieder</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5">
         {members.map(m => (
           <Link key={m.id} to={`/profile/${m.id}`}>
-            {/* ÄNDERUNG: Blau-Hover-Rand zu Rot-Hover gewechselt */}
-            <div className="bg-dark-200 border border-dark-100 p-5 rounded-2xl hover:border-red-500 hover:-translate-y-1 transition duration-200 shadow-md">
-              <div className="flex flex-col items-center text-center gap-3">
-                {/* ÄNDERUNG: Blau-Hintergrund zu Rot-Hintergrund gewechselt */}
-                <div className="w-20 h-20 rounded-full bg-red-950 flex items-center justify-center overflow-hidden border-4 border-dark-100 shadow-sm relative">
-                  {/* ÄNDERUNG: Blau-Text zu Rot-Text gewechselt */}
-                  {m.avatar ? <img src={getImageUrl(m.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-2xl font-bold">{m.username[0].toUpperCase()}</span>}
+            <div className="bg-dark-200 border border-dark-100 p-3 sm:p-5 rounded-xl sm:rounded-2xl hover:border-red-500 active:scale-95 sm:hover:-translate-y-1 transition duration-200 shadow-md">
+              <div className="flex flex-col items-center text-center gap-2 sm:gap-3">
+                <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-red-950 flex items-center justify-center overflow-hidden border-2 sm:border-4 border-dark-100 shadow-sm relative">
+                  {m.avatar ? <img src={getImageUrl(m.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-xl sm:text-2xl font-bold">{m.username[0].toUpperCase()}</span>}
                 </div>
-                <div>
-                  <p className="text-white font-bold text-lg truncate w-full px-2">{m.display_name || m.username}</p>
-                  {/* ÄNDERUNG: Blau-Text zu Rot-Text gewechselt */}
+                <div className="w-full">
+                  <p className="text-white font-bold text-sm sm:text-lg truncate px-1 sm:px-2">{m.display_name || m.username}</p>
                   <p className="text-red-500 text-xs font-medium mt-0.5">@{m.username}</p>
                 </div>
-                {m.bio && <p className="text-gray-400 text-xs mt-2 line-clamp-2 italic px-2">"{m.bio}"</p>}
+                {m.bio && <p className="text-gray-400 text-xs mt-1 sm:mt-2 line-clamp-2 italic px-1 sm:px-2 hidden sm:block">"{m.bio}"</p>}
               </div>
             </div>
           </Link>
@@ -1056,22 +1518,18 @@ function MembersPage() {
 function LoginPage() {
   const [u, setU] = useState(''), [p, setP] = useState(''), { login } = useAuth(), nav = useNavigate();
   const sub = async (e) => { e.preventDefault(); try { await login(u, p); nav('/'); } catch (err) { alert(err.message); } };
-  
-  // ÄNDERUNG: Hintergrundbild-Logik (annahme, das Logo wurde hochgeladen und ist im uploads-Ordner)
-  const backgroundImageUrl = `${API_URL}/uploads/image_3.png`;
 
   return (
-    // ÄNDERUNG: Hintergrundbild hinzugefügt, Hintergrund-Einstellungen angepasst
-    <div className="flex items-center justify-center min-h-[calc(100vh-80px)] px-4 bg-black bg-center bg-cover bg-no-repeat" style={{ backgroundImage: `url(${backgroundImageUrl})` }}>
+    <div className="flex items-center justify-center min-h-screen px-4" style={{ backgroundImage: `url('/streetart.png')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
       {/* ÄNDERUNG: Container-Hintergrund verdunkelt, leicht transparent */}
-      <form onSubmit={sub} className="bg-zinc-950/90 p-8 sm:p-10 rounded-3xl w-full max-w-sm border border-dark-100 shadow-2xl backdrop-blur-sm">
+      <form onSubmit={sub} className="bg-black/90 p-8 sm:p-10 rounded-3xl w-full max-w-sm border border-dark-100 shadow-2xl backdrop-blur-sm">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-dark-100 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-dark-100"><span className="text-3xl">👟</span></div>
           <h2 className="text-white text-2xl font-bold">Willkommen zurück</h2>
         </div>
         {/* ÄNDERUNG: Input-Hintergrund verdunkelt, Fokus-Rand zu Rot gewechselt */}
-        <input type="text" placeholder="Username" className="w-full mb-4 p-4 rounded-xl bg-zinc-900 text-white border border-dark-100 outline-none focus:border-red-500 transition" onChange={e => setU(e.target.value)} required />
-        <input type="password" placeholder="Passwort" className="w-full mb-8 p-4 rounded-xl bg-zinc-900 text-white border border-dark-100 outline-none focus:border-red-500 transition" onChange={e => setP(e.target.value)} required />
+        <input type="text" placeholder="Username" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition" onChange={e => setU(e.target.value)} required />
+        <input type="password" placeholder="Passwort" className="w-full mb-8 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition" onChange={e => setP(e.target.value)} required />
         {/* ÄNDERUNG: Blau-Button zu Rot-Button gewechselt, Hover-Effekt */}
         <button className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-bold transition shadow-lg text-lg">Einloggen</button>
         {/* ÄNDERUNG: Blau-Link zu Rot-Link gewechselt */}
@@ -1084,24 +1542,20 @@ function LoginPage() {
 function RegisterPage() {
   const [f, setF] = useState({ u: '', e: '', p: '', d: '' }), { register } = useAuth(), nav = useNavigate();
   const sub = async (e) => { e.preventDefault(); try { await register(f.u, f.e, f.p, f.d); nav('/'); } catch (err) { alert(err.message); } };
-  
-  // ÄNDERUNG: Hintergrundbild-Logik auch hier
-  const backgroundImageUrl = `${API_URL}/uploads/image_3.png`;
 
   return (
-    // ÄNDERUNG: Hintergrundbild hinzugefügt
-    <div className="flex items-center justify-center min-h-[calc(100vh-80px)] px-4 py-8 bg-black bg-center bg-cover bg-no-repeat" style={{ backgroundImage: `url(${backgroundImageUrl})` }}>
+    <div className="flex items-center justify-center min-h-screen px-4 py-8" style={{ backgroundImage: `url('/streetart.png')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
       {/* ÄNDERUNG: Container-Hintergrund verdunkelt */}
-      <form onSubmit={sub} className="bg-zinc-950/90 p-8 sm:p-10 rounded-3xl w-full max-w-sm border border-dark-100 shadow-2xl backdrop-blur-sm">
+      <form onSubmit={sub} className="bg-black/90 p-8 sm:p-10 rounded-3xl w-full max-w-sm border border-dark-100 shadow-2xl backdrop-blur-sm">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-dark-100 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-dark-100"><span className="text-3xl">🧦</span></div>
           <h2 className="text-white text-2xl font-bold">Mitglied werden</h2>
         </div>
         {/* ÄNDERUNG: Input-Hintergrund & Fokus-Farb-Wechsel */}
-        <input type="text" placeholder="Username" className="w-full mb-4 p-4 rounded-xl bg-zinc-900 text-white border border-dark-100 outline-none focus:border-red-500 transition" onChange={e => setF({...f, u: e.target.value})} required />
-        <input type="text" placeholder="Anzeigename (optional)" className="w-full mb-4 p-4 rounded-xl bg-zinc-900 text-white border border-dark-100 outline-none focus:border-red-500 transition" onChange={e => setF({...f, d: e.target.value})} />
-        <input type="email" placeholder="Email" className="w-full mb-4 p-4 rounded-xl bg-zinc-900 text-white border border-dark-100 outline-none focus:border-red-500 transition" onChange={e => setF({...f, e: e.target.value})} required />
-        <input type="password" placeholder="Passwort" className="w-full mb-8 p-4 rounded-xl bg-zinc-900 text-white border border-dark-100 outline-none focus:border-red-500 transition" onChange={e => setF({...f, p: e.target.value})} required />
+        <input type="text" placeholder="Username" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition" onChange={e => setF({...f, u: e.target.value})} required />
+        <input type="text" placeholder="Anzeigename (optional)" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition" onChange={e => setF({...f, d: e.target.value})} />
+        <input type="email" placeholder="Email" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition" onChange={e => setF({...f, e: e.target.value})} required />
+        <input type="password" placeholder="Passwort" className="w-full mb-8 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition" onChange={e => setF({...f, p: e.target.value})} required />
         {/* ÄNDERUNG: Blau-Button zu Rot-Button gewechselt */}
         <button className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-bold transition shadow-lg text-lg">Registrieren</button>
       </form>
@@ -1137,6 +1591,9 @@ export default function App() {
                       <Route path="/search" element={<SearchPage />} />
                       <Route path="/messages" element={<MessagesPage />} />
                       <Route path="/messages/:id" element={<ConversationPage />} />
+                      <Route path="/forum" element={<ForumPage />} />
+                      <Route path="/forum/new" element={<CreateForumTopicPage />} />
+                      <Route path="/forum/:id" element={<ForumTopicPage />} />
                     </Routes>
                   </main>
                 </div>

@@ -339,7 +339,7 @@ function Post({ post, onRefresh }) {
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {user?.id !== post.user_id && <button onClick={() => setReportTarget({ type: 'post', id: post.id })} className="text-gray-600 hover:text-orange-400 transition p-1" title="Melden">🚩</button>}
+          {(user?.id !== post.user_id || user?.is_admin) && <button onClick={() => setReportTarget({ type: 'post', id: post.id })} className="text-gray-600 hover:text-orange-400 transition p-1" title="Melden">🚩</button>}
           {user?.id === post.user_id && <button onClick={handleDelete} className="text-gray-600 hover:text-red-500 transition p-1" title="Löschen">🗑️</button>}
         </div>
       </div>
@@ -391,7 +391,7 @@ function Post({ post, onRefresh }) {
                 <div className="bg-dark-100 p-3 rounded-xl flex-1">
                   <div className="flex justify-between items-start mb-1">
                     <p className="text-white text-xs font-bold">@{c.username}</p>
-                    {user?.id !== c.user_id && <button onClick={() => setReportTarget({ type: 'comment', id: c.id })} className="text-gray-600 hover:text-orange-400 transition text-xs" title="Melden">🚩</button>}
+                    {(user?.id !== c.user_id || user?.is_admin) && <button onClick={() => setReportTarget({ type: 'comment', id: c.id })} className="text-gray-600 hover:text-orange-400 transition text-xs" title="Melden">🚩</button>}
                   </div>
                   <TextWithMentions text={c.content} className="text-gray-300 text-sm" />
                 </div>
@@ -1425,7 +1425,7 @@ function ForumTopicPage() {
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            {user?.id !== topic.user_id && <button onClick={() => setReportTarget({ type: 'topic', id: topic.id })} className="text-gray-600 hover:text-orange-400 transition p-1" title="Melden">🚩</button>}
+            {(user?.id !== topic.user_id || user?.is_admin) && <button onClick={() => setReportTarget({ type: 'topic', id: topic.id })} className="text-gray-600 hover:text-orange-400 transition p-1" title="Melden">🚩</button>}
             {user?.id === topic.user_id && <button onClick={handleDeleteTopic} className="text-gray-600 hover:text-red-500 transition p-1" title="Löschen">🗑️</button>}
           </div>
         </div>
@@ -1455,7 +1455,7 @@ function ForumTopicPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
-                {user?.id !== reply.user_id && <button onClick={() => setReportTarget({ type: 'reply', id: reply.id })} className="text-gray-600 hover:text-orange-400 transition p-1 text-sm" title="Melden">🚩</button>}
+                {(user?.id !== reply.user_id || user?.is_admin) && <button onClick={() => setReportTarget({ type: 'reply', id: reply.id })} className="text-gray-600 hover:text-orange-400 transition p-1 text-sm" title="Melden">🚩</button>}
                 {user?.id === reply.user_id && <button onClick={() => handleDeleteReply(reply.id)} className="text-gray-600 hover:text-red-500 transition p-1 text-sm">🗑️</button>}
               </div>
             </div>

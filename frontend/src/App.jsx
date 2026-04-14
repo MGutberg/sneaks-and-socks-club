@@ -218,6 +218,61 @@ function TextWithMentions({ text, className }) {
   );
 }
 
+// --- REPORT MODAL ---
+const REPORT_REASONS = ['Spam', 'Beleidigung', 'Unangemessener Inhalt', 'Fehlinformation', 'Sonstiges'];
+
+function ReportModal({ contentType, contentId, onClose }) {
+  const apiFetch = useApi();
+  const [reason, setReason] = useState('');
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    if (!reason) return;
+    setSending(true);
+    try {
+      await apiFetch('/api/reports', { method: 'POST', body: JSON.stringify({ content_type: contentType, content_id: contentId, reason }) });
+      setDone(true);
+      setTimeout(onClose, 1500);
+    } catch(e) { alert('Fehler beim Melden'); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" onClick={onClose}>
+      <div className="bg-dark-300 rounded-2xl p-6 w-full max-w-sm border border-dark-100 shadow-2xl" onClick={e => e.stopPropagation()}>
+        {done ? (
+          <div className="text-center py-4">
+            <div className="text-4xl mb-3">✅</div>
+            <p className="text-white font-bold">Meldung eingereicht!</p>
+            <p className="text-gray-400 text-sm mt-1">Ein Admin wird dies prüfen.</p>
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-bold text-lg">Inhalt melden 🚩</h3>
+              <button onClick={onClose} className="text-gray-500 hover:text-white text-xl">✕</button>
+            </div>
+            <p className="text-gray-400 text-sm mb-4">Bitte wähle einen Grund für deine Meldung:</p>
+            <div className="space-y-2 mb-5">
+              {REPORT_REASONS.map(r => (
+                <button key={r} onClick={() => setReason(r)}
+                  className={`w-full text-left px-4 py-3 rounded-xl text-sm transition border ${reason === r ? 'border-red-500 bg-red-950 text-white font-bold' : 'border-dark-100 text-gray-400 hover:border-gray-600'}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <button onClick={submit} disabled={!reason || sending}
+              className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition">
+              {sending ? 'Wird gesendet...' : 'Melden'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const REACTION_EMOJIS = ['🔥', '👟', '🧦', '❤️', '😂'];
 
 function Post({ post, onRefresh }) {
@@ -229,6 +284,7 @@ function Post({ post, onRefresh }) {
   const [newComment, setNewComment] = useState('');
   const [reactions, setReactions] = useState(post.reactions || {});
   const [myReactions, setMyReactions] = useState(post.my_reactions || []);
+  const [reportTarget, setReportTarget] = useState(null);
 
   const handleDelete = async () => { if (window.confirm("Post löschen?")) { await apiFetch(`/api/posts/${post.id}`, { method: 'DELETE' }); onRefresh(); } }
   
@@ -282,7 +338,10 @@ function Post({ post, onRefresh }) {
             <p className="text-gray-500 text-xs">@{post.username}</p>
           </div>
         </div>
-        {user?.id === post.user_id && <button onClick={handleDelete} className="text-gray-600 hover:text-red-500 transition p-1 flex-shrink-0" title="Löschen">🗑️</button>}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {user?.id !== post.user_id && <button onClick={() => setReportTarget({ type: 'post', id: post.id })} className="text-gray-600 hover:text-orange-400 transition p-1" title="Melden">🚩</button>}
+          {user?.id === post.user_id && <button onClick={handleDelete} className="text-gray-600 hover:text-red-500 transition p-1" title="Löschen">🗑️</button>}
+        </div>
       </div>
       <TextWithMentions text={post.content} className="text-gray-200 text-sm sm:text-[15px] mt-2 sm:mt-3 whitespace-pre-wrap leading-relaxed" />
       {post.image && <img src={getImageUrl(post.image)} className="mt-3 sm:mt-4 rounded-lg sm:rounded-xl w-full max-h-[400px] sm:max-h-[500px] object-cover" />}
@@ -330,7 +389,10 @@ function Post({ post, onRefresh }) {
                   {c.avatar ? <img src={getImageUrl(c.avatar)} className="w-full h-full object-cover" /> : <span className="text-gray-400 text-xs font-bold">{c.username[0].toUpperCase()}</span>}
                 </div>
                 <div className="bg-dark-100 p-3 rounded-xl flex-1">
-                  <p className="text-white text-xs font-bold mb-1">@{c.username}</p>
+                  <div className="flex justify-between items-start mb-1">
+                    <p className="text-white text-xs font-bold">@{c.username}</p>
+                    {user?.id !== c.user_id && <button onClick={() => setReportTarget({ type: 'comment', id: c.id })} className="text-gray-600 hover:text-orange-400 transition text-xs" title="Melden">🚩</button>}
+                  </div>
                   <TextWithMentions text={c.content} className="text-gray-300 text-sm" />
                 </div>
               </div>
@@ -338,6 +400,7 @@ function Post({ post, onRefresh }) {
           </div>
         </div>
       )}
+      {reportTarget && <ReportModal contentType={reportTarget.type} contentId={reportTarget.id} onClose={() => setReportTarget(null)} />}
     </div>
   )
 }
@@ -1290,6 +1353,7 @@ function ForumTopicPage() {
   const [replyImage, setReplyImage] = useState(null);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [reportTarget, setReportTarget] = useState(null);
   const apiFetch = useApi();
   const navigate = useNavigate();
 
@@ -1360,9 +1424,10 @@ function ForumTopicPage() {
               <p className="text-gray-500 text-xs">@{topic.username} · {new Date(topic.created_at).toLocaleDateString('de-DE')}</p>
             </div>
           </div>
-          {user?.id === topic.user_id && (
-            <button onClick={handleDeleteTopic} className="text-gray-600 hover:text-red-500 transition p-1" title="Löschen">🗑️</button>
-          )}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {user?.id !== topic.user_id && <button onClick={() => setReportTarget({ type: 'topic', id: topic.id })} className="text-gray-600 hover:text-orange-400 transition p-1" title="Melden">🚩</button>}
+            {user?.id === topic.user_id && <button onClick={handleDeleteTopic} className="text-gray-600 hover:text-red-500 transition p-1" title="Löschen">🗑️</button>}
+          </div>
         </div>
         <h1 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">{topic.title}</h1>
         <p className="text-gray-200 text-sm sm:text-base whitespace-pre-wrap leading-relaxed">{topic.content}</p>
@@ -1389,9 +1454,10 @@ function ForumTopicPage() {
                   <p className="text-gray-500 text-xs">{new Date(reply.created_at).toLocaleDateString('de-DE')}</p>
                 </div>
               </div>
-              {user?.id === reply.user_id && (
-                <button onClick={() => handleDeleteReply(reply.id)} className="text-gray-600 hover:text-red-500 transition p-1 text-sm">🗑️</button>
-              )}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {user?.id !== reply.user_id && <button onClick={() => setReportTarget({ type: 'reply', id: reply.id })} className="text-gray-600 hover:text-orange-400 transition p-1 text-sm" title="Melden">🚩</button>}
+                {user?.id === reply.user_id && <button onClick={() => handleDeleteReply(reply.id)} className="text-gray-600 hover:text-red-500 transition p-1 text-sm">🗑️</button>}
+              </div>
             </div>
             <TextWithMentions text={reply.content} className="text-gray-200 text-sm whitespace-pre-wrap" />
             {reply.image && <img src={getImageUrl(reply.image)} className="mt-2 sm:mt-3 rounded-lg w-full max-h-[300px] object-cover" />}
@@ -1425,6 +1491,7 @@ function ForumTopicPage() {
           </button>
         </div>
       </form>
+      {reportTarget && <ReportModal contentType={reportTarget.type} contentId={reportTarget.id} onClose={() => setReportTarget(null)} />}
     </div>
   );
 }
@@ -1637,6 +1704,7 @@ function AdminPage() {
   const [users, setUsers] = useState([]);
   const [posts, setPosts] = useState([]);
   const [topics, setTopics] = useState([]);
+  const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -1651,6 +1719,7 @@ function AdminPage() {
       else if (t === 'users') setUsers(await apiFetch('/api/admin/users'));
       else if (t === 'posts') setPosts(await apiFetch('/api/admin/posts'));
       else if (t === 'forum') setTopics(await apiFetch('/api/admin/topics'));
+      else if (t === 'reports') setReports(await apiFetch('/api/admin/reports'));
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -1683,11 +1752,23 @@ function AdminPage() {
     setTopics(t => t.map(x => x.id === id ? { ...x, pinned: res.pinned ? 1 : 0 } : x));
   };
 
+  const dismissReport = async (id) => {
+    await apiFetch(`/api/admin/reports/${id}/dismiss`, { method: 'PUT' });
+    setReports(r => r.filter(x => x.id !== id));
+  };
+
+  const deleteReportContent = async (id) => {
+    if (!window.confirm('Inhalt löschen und Meldung schließen?')) return;
+    await apiFetch(`/api/admin/reports/${id}/delete-content`, { method: 'DELETE' });
+    setReports(r => r.filter(x => x.id !== id));
+  };
+
   const TABS = [
     { id: 'dashboard', label: '📊 Dashboard' },
     { id: 'users', label: '👥 User' },
     { id: 'posts', label: '📝 Posts' },
     { id: 'forum', label: '💬 Forum' },
+    { id: 'reports', label: '🚩 Meldungen' },
   ];
 
   const CATEGORY_LABELS = { general: 'Allgemein', sneakers: 'Sneakers', socks: 'Socken', collections: 'Sammlungen', trading: 'Börse', offtopic: 'Off-Topic' };
@@ -1836,6 +1917,52 @@ function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* REPORTS */}
+      {!loading && tab === 'reports' && (
+        <div className="space-y-3">
+          <p className="text-gray-400 text-sm mb-4">{reports.length} offene Meldungen</p>
+          {reports.length === 0 && (
+            <div className="text-center bg-dark-300 rounded-2xl p-10 border border-dark-100">
+              <div className="text-4xl mb-3">✅</div>
+              <p className="text-gray-400">Keine offenen Meldungen</p>
+            </div>
+          )}
+          {reports.map(r => {
+            const typeLabels = { post: 'Post', comment: 'Kommentar', topic: 'Forum-Topic', reply: 'Forum-Antwort' };
+            return (
+              <div key={r.id} className="bg-dark-300 rounded-2xl p-4 border border-orange-900/50">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="bg-orange-900/40 text-orange-400 text-xs px-2 py-0.5 rounded-full border border-orange-800 font-bold">🚩 {typeLabels[r.content_type]}</span>
+                    <span className="bg-dark-100 text-gray-300 text-xs px-2 py-0.5 rounded-full">{r.reason}</span>
+                  </div>
+                  <span className="text-gray-600 text-xs flex-shrink-0">{new Date(r.created_at).toLocaleDateString('de-DE')}</span>
+                </div>
+                <p className="text-gray-500 text-xs mb-2">Gemeldet von: <span className="text-gray-300">@{r.reporter_username}</span></p>
+                {r.content ? (
+                  <div className="bg-dark-100 rounded-xl p-3 mb-3">
+                    <p className="text-gray-400 text-xs mb-1 font-bold">von @{r.content.username}:</p>
+                    <p className="text-gray-200 text-sm line-clamp-4 whitespace-pre-wrap">{r.content.title || r.content.content}</p>
+                  </div>
+                ) : (
+                  <div className="bg-dark-100 rounded-xl p-3 mb-3 text-gray-500 text-xs italic">Inhalt wurde bereits gelöscht</div>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => dismissReport(r.id)} className="text-xs px-3 py-2 rounded-lg bg-dark-100 text-gray-400 border border-dark-100 hover:text-white font-bold transition">
+                    Ignorieren
+                  </button>
+                  {r.content && (
+                    <button onClick={() => deleteReportContent(r.id)} className="text-xs px-3 py-2 rounded-lg bg-red-900/40 text-red-400 border border-red-900 hover:bg-red-900/70 font-bold transition">
+                      Inhalt löschen
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

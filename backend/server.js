@@ -87,6 +87,16 @@ db.exec(`
     emoji TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(post_id, user_id, emoji)
   );
+  CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY,
+    reporter_id TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    content_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT DEFAULT 'open',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reporter_id) REFERENCES users(id)
+  );
 `);
 
 // Automatisch Spalten bei alten Datenbanken nachrüsten
@@ -613,6 +623,76 @@ app.delete('/api/forum/replies/:id', authenticateToken, (req, res) => {
   if (!reply) return res.status(404).json({ error: 'Reply not found' });
   if (reply.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
   db.prepare('DELETE FROM forum_replies WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// --- REPORT ROUTES ---
+const REPORT_REASONS = ['Spam', 'Beleidigung', 'Unangemessener Inhalt', 'Fehlinformation', 'Sonstiges'];
+
+app.post('/api/reports', authenticateToken, (req, res) => {
+  const { content_type, content_id, reason } = req.body;
+  if (!['post', 'comment', 'topic', 'reply'].includes(content_type)) return res.status(400).json({ error: 'Invalid content_type' });
+  if (!REPORT_REASONS.includes(reason)) return res.status(400).json({ error: 'Invalid reason' });
+  const existing = db.prepare('SELECT id FROM reports WHERE reporter_id = ? AND content_id = ? AND status = ?').get(req.user.id, content_id, 'open');
+  if (existing) return res.status(400).json({ error: 'Already reported' });
+  db.prepare('INSERT INTO reports (id, reporter_id, content_type, content_id, reason) VALUES (?, ?, ?, ?, ?)').run(uuidv4(), req.user.id, content_type, content_id, reason);
+  res.json({ success: true });
+});
+
+app.get('/api/admin/reports', authenticateAdmin, (req, res) => {
+  const reports = db.prepare(`
+    SELECT r.*, u.username as reporter_username, u.display_name as reporter_display
+    FROM reports r JOIN users u ON r.reporter_id = u.id
+    WHERE r.status = 'open'
+    ORDER BY r.created_at DESC
+  `).all();
+
+  const enriched = reports.map(r => {
+    let content = null;
+    try {
+      if (r.content_type === 'post') {
+        const p = db.prepare('SELECT p.content, p.image, u.username, u.display_name FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = ?').get(r.content_id);
+        content = p;
+      } else if (r.content_type === 'comment') {
+        const c = db.prepare('SELECT c.content, u.username, u.display_name FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(r.content_id);
+        content = c;
+      } else if (r.content_type === 'topic') {
+        const t = db.prepare('SELECT t.title, t.content, u.username, u.display_name FROM forum_topics t JOIN users u ON t.user_id = u.id WHERE t.id = ?').get(r.content_id);
+        content = t;
+      } else if (r.content_type === 'reply') {
+        const rep = db.prepare('SELECT r.content, u.username, u.display_name FROM forum_replies r JOIN users u ON r.user_id = u.id WHERE r.id = ?').get(r.content_id);
+        content = rep;
+      }
+    } catch(e) {}
+    return { ...r, content };
+  });
+  res.json(enriched);
+});
+
+app.put('/api/admin/reports/:id/dismiss', authenticateAdmin, (req, res) => {
+  db.prepare("UPDATE reports SET status = 'dismissed' WHERE id = ?").run(req.params.id);
+  res.json({ success: true });
+});
+
+app.delete('/api/admin/reports/:id/delete-content', authenticateAdmin, (req, res) => {
+  const report = db.prepare('SELECT * FROM reports WHERE id = ?').get(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  try {
+    if (report.content_type === 'post') {
+      db.prepare('DELETE FROM likes WHERE post_id = ?').run(report.content_id);
+      db.prepare('DELETE FROM comments WHERE post_id = ?').run(report.content_id);
+      db.prepare('DELETE FROM reactions WHERE post_id = ?').run(report.content_id);
+      db.prepare('DELETE FROM posts WHERE id = ?').run(report.content_id);
+    } else if (report.content_type === 'comment') {
+      db.prepare('DELETE FROM comments WHERE id = ?').run(report.content_id);
+    } else if (report.content_type === 'topic') {
+      db.prepare('DELETE FROM forum_replies WHERE topic_id = ?').run(report.content_id);
+      db.prepare('DELETE FROM forum_topics WHERE id = ?').run(report.content_id);
+    } else if (report.content_type === 'reply') {
+      db.prepare('DELETE FROM forum_replies WHERE id = ?').run(report.content_id);
+    }
+  } catch(e) {}
+  db.prepare("UPDATE reports SET status = 'resolved' WHERE content_id = ?").run(report.content_id);
   res.json({ success: true });
 });
 

@@ -97,6 +97,17 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (reporter_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    content_id TEXT,
+    read_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (actor_id) REFERENCES users(id)
+  );
 `);
 
 // Automatisch Spalten bei alten Datenbanken nachrüsten
@@ -113,6 +124,14 @@ try {
 try {
   db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;");
 } catch (e) { /* Spalte existiert bereits */ }
+
+// --- NOTIFICATION HELPER ---
+const notify = (userId, type, actorId, contentId = null) => {
+  if (userId === actorId) return; // keine Selbst-Benachrichtigungen
+  try {
+    db.prepare('INSERT INTO notifications (id, user_id, type, actor_id, content_id) VALUES (?, ?, ?, ?, ?)').run(uuidv4(), userId, type, actorId, contentId);
+  } catch (e) { console.error('notify error', e); }
+};
 
 app.use(cors());
 app.use(express.json());
@@ -222,6 +241,7 @@ app.post('/api/users/:id/follow', authenticateToken, (req, res) => {
     res.json({ following: false });
   } else {
     db.prepare('INSERT INTO follows (id, follower_id, following_id) VALUES (?, ?, ?)').run(uuidv4(), req.user.id, req.params.id);
+    notify(req.params.id, 'follow', req.user.id);
     res.json({ following: true });
   }
 });
@@ -323,6 +343,8 @@ app.post('/api/posts/:id/like', authenticateToken, (req, res) => {
     res.json({ liked: 0 });
   } else {
     db.prepare('INSERT INTO likes (id, post_id, user_id) VALUES (?, ?, ?)').run(uuidv4(), req.params.id, req.user.id);
+    const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(req.params.id);
+    if (post) notify(post.user_id, 'like', req.user.id, req.params.id);
     res.json({ liked: 1 });
   }
 });
@@ -349,6 +371,8 @@ app.post('/api/posts/:id/comments', authenticateToken, (req, res) => {
   if (!req.body.content) return res.status(400).json({ error: 'Content required' });
   const id = uuidv4();
   db.prepare('INSERT INTO comments (id, post_id, user_id, content) VALUES (?, ?, ?, ?)').run(id, req.params.id, req.user.id, req.body.content);
+  const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(req.params.id);
+  if (post) notify(post.user_id, 'comment', req.user.id, req.params.id);
   res.json(db.prepare('SELECT c.*, u.username, u.display_name, u.avatar FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?').get(id));
 });
 
@@ -412,6 +436,8 @@ app.post('/api/conversations/:id/messages', authenticateToken, (req, res) => {
   const id = uuidv4();
   db.prepare('INSERT INTO messages (id, conversation_id, sender_id, content) VALUES (?, ?, ?, ?)').run(id, req.params.id, req.user.id, content.trim());
   db.prepare('UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+  const recipientId = conversation.user1_id === req.user.id ? conversation.user2_id : conversation.user1_id;
+  notify(recipientId, 'message', req.user.id, req.params.id);
   const message = db.prepare(`
     SELECT m.*, u.username, u.display_name, u.avatar
     FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = ?
@@ -630,6 +656,7 @@ app.post('/api/forum/topics/:id/replies', authenticateToken, upload.single('imag
   const image = req.file ? await saveFileLocally(req.file.buffer, req.file.originalname) : '';
   db.prepare('INSERT INTO forum_replies (id, topic_id, user_id, content, image) VALUES (?, ?, ?, ?, ?)').run(id, req.params.id, req.user.id, content, image);
   db.prepare('UPDATE forum_topics SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+  notify(topic.user_id, 'reply', req.user.id, req.params.id);
   const reply = db.prepare(`
     SELECT r.*, u.username, u.display_name, u.avatar
     FROM forum_replies r JOIN users u ON r.user_id = u.id WHERE r.id = ?
@@ -652,6 +679,25 @@ app.delete('/api/forum/replies/:id', authenticateToken, (req, res) => {
   if (!reply) return res.status(404).json({ error: 'Reply not found' });
   if (reply.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
   db.prepare('DELETE FROM forum_replies WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// --- NOTIFICATION ROUTES ---
+app.get('/api/notifications', authenticateToken, (req, res) => {
+  const notifications = db.prepare(`
+    SELECT n.*, u.username as actor_username, u.display_name as actor_display, u.avatar as actor_avatar
+    FROM notifications n
+    JOIN users u ON n.actor_id = u.id
+    WHERE n.user_id = ?
+    ORDER BY n.created_at DESC
+    LIMIT 30
+  `).all(req.user.id);
+  const unreadCount = db.prepare("SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND read_at IS NULL").get(req.user.id).c;
+  res.json({ notifications, unreadCount });
+});
+
+app.put('/api/notifications/read-all', authenticateToken, (req, res) => {
+  db.prepare("UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = ? AND read_at IS NULL").run(req.user.id);
   res.json({ success: true });
 });
 

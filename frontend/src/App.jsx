@@ -61,6 +61,55 @@ function useApi() {
   }
 }
 
+// --- NOTIFICATION ITEM ---
+function NotifItem({ n, onClose }) {
+  const navigate = useNavigate();
+  const imgUrl = (p) => !p ? null : p.startsWith('http') ? p : `${API_URL}/${p}`;
+
+  const labels = {
+    follow: 'folgt dir jetzt',
+    like: 'liked deinen Post',
+    comment: 'hat deinen Post kommentiert',
+    reply: 'hat auf dein Thema geantwortet',
+    message: 'hat dir eine Nachricht gesendet',
+  };
+
+  const links = {
+    follow: `/profile/${n.actor_id}`,
+    like: `/`,
+    comment: `/`,
+    reply: `/forum/topics/${n.content_id}`,
+    message: `/messages`,
+  };
+
+  const timeAgo = (dateStr) => {
+    const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+    if (diff < 60) return 'gerade eben';
+    if (diff < 3600) return `vor ${Math.floor(diff / 60)} Min.`;
+    if (diff < 86400) return `vor ${Math.floor(diff / 3600)} Std.`;
+    return `vor ${Math.floor(diff / 86400)} Tagen`;
+  };
+
+  return (
+    <div onClick={() => { navigate(links[n.type] || '/'); onClose(); }}
+      className={`flex items-start gap-3 px-4 py-3 hover:bg-dark-300 cursor-pointer transition border-b border-dark-100 ${!n.read_at ? 'bg-dark-300/60' : ''}`}>
+      <div className="w-9 h-9 rounded-full bg-red-950 flex items-center justify-center overflow-hidden flex-shrink-0">
+        {n.actor_avatar
+          ? <img src={imgUrl(n.actor_avatar)} className="w-full h-full object-cover" />
+          : <span className="text-red-400 text-xs font-bold">{n.actor_username?.[0]?.toUpperCase()}</span>}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-gray-200 leading-snug">
+          <span className="font-bold text-white">{n.actor_display || n.actor_username}</span>{' '}
+          {labels[n.type] || n.type}
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5">{timeAgo(n.created_at)}</p>
+      </div>
+      {!n.read_at && <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1.5"></div>}
+    </div>
+  );
+}
+
 // --- NAVBAR ---
 function Navbar() {
   const { user, logout } = useAuth();
@@ -70,6 +119,26 @@ function Navbar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+
+  const loadNotifications = async () => {
+    try {
+      const data = await apiFetch('/api/notifications');
+      setNotifications(data.notifications);
+      setUnreadNotifs(data.unreadCount);
+    } catch (e) {}
+  };
+
+  const markNotifsRead = async () => {
+    if (unreadNotifs === 0) return;
+    try {
+      await apiFetch('/api/notifications/read-all', { method: 'PUT' });
+      setUnreadNotifs(0);
+      setNotifications(prev => prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
+    } catch (e) {}
+  };
 
   // Heartbeat & Online Counter & Unread Messages Logik
   useEffect(() => {
@@ -86,7 +155,8 @@ function Navbar() {
       } catch (e) { console.error("Status update failed", e); }
     };
     updateStatus();
-    const interval = setInterval(updateStatus, 30000);
+    loadNotifications();
+    const interval = setInterval(() => { updateStatus(); loadNotifications(); }, 30000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -128,6 +198,34 @@ function Navbar() {
 
         {user && (
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* Notifications Bell */}
+            <div className="relative">
+              <button onClick={() => { setNotifOpen(!notifOpen); if (!notifOpen) markNotifsRead(); }}
+                className="relative text-gray-400 hover:text-white transition p-2" title="Benachrichtigungen">
+                <span className="text-xl">🔔</span>
+                {unreadNotifs > 0 && (
+                  <span className="absolute top-0 right-0 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {unreadNotifs > 9 ? '9+' : unreadNotifs}
+                  </span>
+                )}
+              </button>
+              {notifOpen && (
+                <div className="absolute right-0 top-12 w-80 bg-dark-200 border border-dark-100 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-dark-100 flex justify-between items-center">
+                    <span className="text-white font-bold text-sm">Benachrichtigungen</span>
+                    <button onClick={() => setNotifOpen(false)} className="text-gray-500 hover:text-white text-xs">✕</button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="text-gray-500 text-sm text-center py-8">Keine Benachrichtigungen</p>
+                    ) : notifications.map(n => (
+                      <NotifItem key={n.id} n={n} onClose={() => setNotifOpen(false)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Messages Icon */}
             <Link to="/messages" className="relative text-gray-400 hover:text-white transition p-2" title="Nachrichten">
               <span className="text-xl">✉️</span>

@@ -185,7 +185,7 @@ app.get('/api/users', authenticateToken, (req, res) => {
 });
 
 app.get('/api/users/by-username/:username', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  const user = db.prepare('SELECT id, username FROM users WHERE LOWER(username) = LOWER(?)').get(req.params.username);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json(user);
 });

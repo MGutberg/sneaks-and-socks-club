@@ -387,6 +387,8 @@ app.delete('/api/profile/gallery/:id', authenticateToken, (req, res) => {
 
 // --- POST ROUTES ---
 app.get('/api/posts', authenticateToken, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
   const posts = db.prepare(`
     SELECT p.*, u.username, u.display_name, u.avatar,
     (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
@@ -395,8 +397,8 @@ app.get('/api/posts', authenticateToken, (req, res) => {
     (SELECT 1 FROM saved_posts WHERE post_id = p.id AND user_id = ?) as saved,
     (SELECT json_group_object(emoji, c) FROM (SELECT emoji, COUNT(*) as c FROM reactions WHERE post_id = p.id GROUP BY emoji)) as reactions_json,
     (SELECT json_group_array(emoji) FROM reactions WHERE post_id = p.id AND user_id = ?) as my_reactions_json
-    FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC
-  `).all(req.user.id, req.user.id, req.user.id);
+    FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC LIMIT ? OFFSET ?
+  `).all(req.user.id, req.user.id, req.user.id, limit, offset);
   res.json(posts.map(p => ({
     ...p,
     reactions: p.reactions_json ? JSON.parse(p.reactions_json) : {},
@@ -741,7 +743,10 @@ app.get('/api/forum/topics', authenticateToken, (req, res) => {
     query += ' WHERE t.category = ?';
     params.push(category);
   }
-  query += ' ORDER BY t.pinned DESC, t.updated_at DESC';
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+  query += ' ORDER BY t.pinned DESC, t.updated_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
   res.json(db.prepare(query).all(...params));
 });
 

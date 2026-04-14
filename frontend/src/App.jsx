@@ -691,25 +691,75 @@ function SearchPage() {
   );
 }
 
+// --- Infinite-Scroll Hook ---
+const PAGE_SIZE = 20;
+function useInfiniteList(buildUrl, deps = []) {
+  const [items, setItems] = useState([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const apiFetch = useApi();
+  const sentinelRef = useRef(null);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch(buildUrl(0, PAGE_SIZE));
+      setItems(data);
+      setOffset(data.length);
+      setHasMore(data.length === PAGE_SIZE);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, deps);
+
+  const loadMore = async () => {
+    if (loading || !hasMore) return;
+    setLoading(true);
+    try {
+      const data = await apiFetch(buildUrl(offset, PAGE_SIZE));
+      setItems(prev => [...prev, ...data]);
+      setOffset(prev => prev + data.length);
+      setHasMore(data.length === PAGE_SIZE);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) loadMore();
+    }, { rootMargin: '200px' });
+    obs.observe(sentinelRef.current);
+    return () => obs.disconnect();
+  }, [offset, hasMore, loading]);
+
+  return { items, setItems, loading, hasMore, sentinelRef, reload };
+}
+
 // --- HOME PAGE (Nur noch Feed) ---
 function HomePage() {
-  const [posts, setPosts] = useState([]);
-  const apiFetch = useApi();
-
-  const load = async () => { try { setPosts(await apiFetch('/api/posts')); } catch(e) {} };
-  useEffect(() => { load() }, []);
+  const { items: posts, loading, hasMore, sentinelRef, reload } = useInfiniteList(
+    (offset, limit) => `/api/posts?offset=${offset}&limit=${limit}`
+  );
 
   return (
     <div className="max-w-xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
       <h2 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-6">Dein Feed</h2>
-      {posts.length === 0 ? (
+      {!loading && posts.length === 0 ? (
         <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl sm:rounded-2xl border border-dark-100">
           <span className="text-4xl sm:text-5xl">👀</span>
           <p className="text-gray-400 mt-3 sm:mt-4 font-medium text-sm sm:text-base">Noch keine Posts vorhanden.<br/>Sei der Erste!</p>
           <button onClick={() => window.location.href='/create-post'} className="mt-4 bg-red-600 text-white px-5 sm:px-6 py-2 rounded-lg font-bold text-sm sm:text-base">Jetzt posten</button>
         </div>
       ) : (
-        posts.map(p => <Post key={p.id} post={p} onRefresh={load} />)
+        <>
+          {posts.map(p => <Post key={p.id} post={p} onRefresh={reload} />)}
+          {hasMore && <div ref={sentinelRef} className="h-10" />}
+          {loading && <div className="text-center text-gray-500 text-sm py-4">Lade...</div>}
+          {!hasMore && posts.length > 0 && <div className="text-center text-gray-600 text-xs py-4">— Ende —</div>}
+        </>
       )}
     </div>
   )
@@ -1602,27 +1652,22 @@ function ConversationPage() {
 
 // --- FORUM PAGES ---
 function ForumPage() {
-  const [topics, setTopics] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [loading, setLoading] = useState(true);
   const apiFetch = useApi();
   const navigate = useNavigate();
 
+  const { items: topics, loading, hasMore, sentinelRef } = useInfiniteList(
+    (offset, limit) => {
+      const cat = selectedCategory !== 'all' ? `&category=${selectedCategory}` : '';
+      return `/api/forum/topics?offset=${offset}&limit=${limit}${cat}`;
+    },
+    [selectedCategory]
+  );
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [cats, tops] = await Promise.all([
-          apiFetch('/api/forum/categories'),
-          apiFetch(`/api/forum/topics${selectedCategory !== 'all' ? `?category=${selectedCategory}` : ''}`)
-        ]);
-        setCategories(cats);
-        setTopics(tops);
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    };
-    loadData();
-  }, [selectedCategory]);
+    apiFetch('/api/forum/categories').then(setCategories).catch(e => console.error(e));
+  }, []);
 
   const getCategoryInfo = (catId) => categories.find(c => c.id === catId) || { name: 'Allgemein', icon: '💬' };
 
@@ -1647,7 +1692,7 @@ function ForumPage() {
         ))}
       </div>
 
-      {loading ? (
+      {loading && topics.length === 0 ? (
         <div className="text-center text-gray-400 py-10">Lade Forum...</div>
       ) : topics.length === 0 ? (
         <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl sm:rounded-2xl border border-dark-100">
@@ -1688,6 +1733,9 @@ function ForumPage() {
               </Link>
             );
           })}
+          {hasMore && <div ref={sentinelRef} className="h-10" />}
+          {loading && topics.length > 0 && <div className="text-center text-gray-500 text-sm py-4">Lade...</div>}
+          {!hasMore && <div className="text-center text-gray-600 text-xs py-4">— Ende —</div>}
         </div>
       )}
     </div>

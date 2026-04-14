@@ -918,31 +918,35 @@ function ProfilePage() {
   useEffect(() => { loadData() }, [id]);
 
   const handleFollow = async () => {
+    if (!profile) return;
     try {
-      const res = await apiFetch(`/api/users/${id}/follow`, { method: 'POST' });
+      const res = await apiFetch(`/api/users/${profile.id}/follow`, { method: 'POST' });
       setIsFollowing(res.following);
       setFollowerCount(prev => res.following ? prev + 1 : prev - 1);
     } catch (e) { console.error(e); }
   };
 
   const handleSendMessage = async () => {
+    if (!profile) return;
     try {
-      const conv = await apiFetch('/api/conversations', { method: 'POST', body: JSON.stringify({ user_id: id }) });
+      const conv = await apiFetch('/api/conversations', { method: 'POST', body: JSON.stringify({ user_id: profile.id }) });
       navigate(`/messages/${conv.id}`);
     } catch (e) { console.error(e); }
   };
 
   const loadFollowers = async () => {
+    if (!profile) return;
     try {
-      const data = await apiFetch(`/api/users/${id}/followers`);
+      const data = await apiFetch(`/api/users/${profile.id}/followers`);
       setFollowersList(data);
       setShowFollowersModal(true);
     } catch (e) { console.error(e); }
   };
 
   const loadFollowing = async () => {
+    if (!profile) return;
     try {
-      const data = await apiFetch(`/api/users/${id}/following`);
+      const data = await apiFetch(`/api/users/${profile.id}/following`);
       setFollowingList(data);
       setShowFollowingModal(true);
     } catch (e) { console.error(e); }
@@ -956,7 +960,7 @@ function ProfilePage() {
       fields.forEach(k => { if (editForm[k] !== null && editForm[k] !== undefined) fd.append(k, editForm[k]); });
       if (editAvatar) fd.append('avatar', editAvatar);
       
-      const updated = await apiFetch(`/api/users/${id}`, { method: 'PUT', body: fd });
+      const updated = await apiFetch(`/api/users/${profile.id}`, { method: 'PUT', body: fd });
       setProfile(updated);
       if (isOwnProfile) updateUser(updated);
       setEditing(false);

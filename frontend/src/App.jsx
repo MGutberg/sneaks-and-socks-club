@@ -861,7 +861,7 @@ function ProfilePage() {
   const galleryInputRef = useRef(null);
   const apiFetch = useApi();
 
-  const isOwnProfile = currentUser?.id === id;
+  const isOwnProfile = !!profile && !!currentUser && (currentUser.id === profile.id);
 
   const loadData = async () => {
     try {

@@ -748,6 +748,7 @@ function ProfilePage() {
   const [followersList, setFollowersList] = useState([]);
   const [followingList, setFollowingList] = useState([]);
   const [externalLinkModal, setExternalLinkModal] = useState(null);
+  const [visitors, setVisitors] = useState([]);
   const galleryInputRef = useRef(null);
   const apiFetch = useApi();
 
@@ -758,14 +759,18 @@ function ProfilePage() {
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       const resolvedId = isUUID ? id : (await apiFetch(`/api/users/by-username/${id}`)).id;
       if (!resolvedId) return;
-      const [pData, pPosts, pGallery] = await Promise.all([
+      const isOwn = currentUser?.id === resolvedId;
+      const requests = [
         apiFetch(`/api/users/${resolvedId}`),
         apiFetch(`/api/users/${resolvedId}/posts`),
         apiFetch(`/api/users/${resolvedId}/gallery`),
-      ]);
+      ];
+      if (isOwn) requests.push(apiFetch('/api/profile/visitors'));
+      const [pData, pPosts, pGallery, pVisitors] = await Promise.all(requests);
       setProfile(pData);
       setPosts(pPosts);
       setGallery(pGallery);
+      if (isOwn) setVisitors(pVisitors || []);
       setEditForm(pData);
       setIsFollowing(pData.is_following || false);
       setFollowerCount(pData.follower_count || 0);
@@ -1050,6 +1055,30 @@ function ProfilePage() {
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" onClick={() => setLightbox(null)}>
           <button className="absolute top-4 right-4 text-white text-3xl font-bold hover:text-red-400 transition">×</button>
           <img src={getImageUrl(lightbox)} className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
+
+      {/* Profilbesucher – nur auf eigenem Profil */}
+      {isOwnProfile && (
+        <div className="bg-dark-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-dark-100 mb-4 sm:mb-8 shadow-lg">
+          <h2 className="text-xl font-bold text-white mb-4">Profilbesucher <span className="text-sm font-normal text-gray-500">(letzte 30)</span></h2>
+          {visitors.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-6">Noch keine Besucher.</p>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-3">
+              {visitors.map(v => (
+                <a key={v.id} href={`/profile/${v.id}`} className="flex flex-col items-center gap-1.5 group" title={v.display_name || v.username}>
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-dark-100 group-hover:border-red-500 transition">
+                    {v.avatar
+                      ? <img src={getImageUrl(v.avatar)} className="w-full h-full object-cover" />
+                      : <div className="w-full h-full bg-dark-300 flex items-center justify-center text-lg font-bold text-gray-400">{(v.display_name || v.username)[0].toUpperCase()}</div>
+                    }
+                  </div>
+                  <span className="text-xs text-gray-400 group-hover:text-white transition truncate w-full text-center">{v.display_name || v.username}</span>
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

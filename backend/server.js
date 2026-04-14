@@ -124,6 +124,14 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (post_id) REFERENCES posts(id)
   );
+  CREATE TABLE IF NOT EXISTS profile_views (
+    id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    viewer_id TEXT NOT NULL,
+    viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (profile_id) REFERENCES users(id),
+    FOREIGN KEY (viewer_id) REFERENCES users(id)
+  );
 `);
 
 // Automatisch Spalten bei alten Datenbanken nachrüsten
@@ -256,7 +264,31 @@ app.get('/api/users/:id', authenticateToken, (req, res) => {
   const followerCount = db.prepare('SELECT COUNT(*) as count FROM follows WHERE following_id = ?').get(req.params.id).count;
   const followingCount = db.prepare('SELECT COUNT(*) as count FROM follows WHERE follower_id = ?').get(req.params.id).count;
   const isFollowing = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(req.user.id, req.params.id) ? true : false;
+  // Profilbesuch aufzeichnen (nicht für eigenes Profil)
+  if (req.user.id !== req.params.id) {
+    db.prepare('INSERT INTO profile_views (id, profile_id, viewer_id) VALUES (?, ?, ?)').run(uuidv4(), req.params.id, req.user.id);
+  }
   res.json({ ...user, follower_count: followerCount, following_count: followingCount, is_following: isFollowing });
+});
+
+// Profilbesucher – letzte 30 eindeutige Besucher (nur eigenes Profil)
+app.get('/api/profile/visitors', authenticateToken, (req, res) => {
+  const visitors = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, pv.viewed_at
+    FROM profile_views pv
+    JOIN users u ON u.id = pv.viewer_id
+    WHERE pv.profile_id = ?
+    ORDER BY pv.viewed_at DESC
+    LIMIT 90
+  `).all(req.user.id);
+  // Deduplizieren: pro viewer_id nur den letzten Besuch
+  const seen = new Set();
+  const unique = [];
+  for (const v of visitors) {
+    if (!seen.has(v.id)) { seen.add(v.id); unique.push(v); }
+    if (unique.length === 30) break;
+  }
+  res.json(unique);
 });
 app.get('/api/users/:id/posts', authenticateToken, (req, res) => {
   const posts = db.prepare(`

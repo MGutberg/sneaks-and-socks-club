@@ -629,6 +629,20 @@ app.delete('/api/forum/replies/:id', authenticateToken, (req, res) => {
 // --- REPORT ROUTES ---
 const REPORT_REASONS = ['Spam', 'Beleidigung', 'Unangemessener Inhalt', 'Fehlinformation', 'Sonstiges'];
 
+// --- ADMIN MIDDLEWARE ---
+const authenticateAdmin = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No token' });
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ error: 'Invalid token' });
+    const user = db.prepare('SELECT id, username, is_admin FROM users WHERE id = ?').get(decoded.id);
+    if (!user || !user.is_admin) return res.status(403).json({ error: 'Admin only' });
+    req.user = decoded;
+    next();
+  });
+};
+
 app.post('/api/reports', authenticateToken, (req, res) => {
   const { content_type, content_id, reason } = req.body;
   if (!['post', 'comment', 'topic', 'reply'].includes(content_type)) return res.status(400).json({ error: 'Invalid content_type' });
@@ -697,19 +711,6 @@ app.delete('/api/admin/reports/:id/delete-content', authenticateAdmin, (req, res
 });
 
 // --- ADMIN ROUTES ---
-const authenticateAdmin = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token' });
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(403).json({ error: 'Invalid token' });
-    const user = db.prepare('SELECT id, username, is_admin FROM users WHERE id = ?').get(decoded.id);
-    if (!user || !user.is_admin) return res.status(403).json({ error: 'Admin only' });
-    req.user = decoded;
-    next();
-  });
-};
-
 app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   const postCount = db.prepare('SELECT COUNT(*) as c FROM posts').get().c;

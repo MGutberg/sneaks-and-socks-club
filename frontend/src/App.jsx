@@ -113,6 +113,7 @@ function Navbar() {
             </div>
             <Link to="/members" className="text-gray-400 hover:text-white transition text-sm font-medium ml-1">Members</Link>
             <Link to="/forum" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">💬 Forum</Link>
+            {user?.is_admin && <Link to="/admin" className="text-yellow-400 hover:text-yellow-300 transition text-sm font-bold ml-3">⚙️ Admin</Link>}
           </div>
 
           {/* Search Input - Desktop */}
@@ -187,6 +188,11 @@ function Navbar() {
             <Link to="/forum" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>💬</span> Forum
             </Link>
+            {user?.is_admin && (
+              <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-yellow-900/40 text-yellow-400 px-4 py-3 rounded-xl font-bold border border-yellow-800">
+                <span>⚙️</span> Admin-Panel
+              </Link>
+            )}
             <button onClick={() => { logout(); navigate('/login'); setMobileMenuOpen(false); }} className="flex items-center gap-3 bg-dark-100 text-red-400 px-4 py-3 rounded-xl text-left">
               <span>🚪</span> Logout
             </button>
@@ -1621,6 +1627,221 @@ function RegisterPage() {
   )
 }
 
+// --- ADMIN PAGE ---
+function AdminPage() {
+  const { user } = useAuth();
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [tab, setTab] = useState('dashboard');
+  const [stats, setStats] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [topics, setTopics] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user?.is_admin) { navigate('/'); return; }
+    loadTab(tab);
+  }, [tab]);
+
+  const loadTab = async (t) => {
+    setLoading(true);
+    try {
+      if (t === 'dashboard') setStats(await apiFetch('/api/admin/stats'));
+      else if (t === 'users') setUsers(await apiFetch('/api/admin/users'));
+      else if (t === 'posts') setPosts(await apiFetch('/api/admin/posts'));
+      else if (t === 'forum') setTopics(await apiFetch('/api/admin/topics'));
+    } catch(e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const deleteUser = async (id, name) => {
+    if (!window.confirm(`User "${name}" wirklich löschen? Alle Daten werden entfernt!`)) return;
+    await apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+    setUsers(u => u.filter(x => x.id !== id));
+  };
+
+  const toggleAdmin = async (id) => {
+    const res = await apiFetch(`/api/admin/users/${id}/toggle-admin`, { method: 'PUT' });
+    setUsers(u => u.map(x => x.id === id ? { ...x, is_admin: res.is_admin ? 1 : 0 } : x));
+  };
+
+  const deletePost = async (id) => {
+    if (!window.confirm('Post löschen?')) return;
+    await apiFetch(`/api/admin/posts/${id}`, { method: 'DELETE' });
+    setPosts(p => p.filter(x => x.id !== id));
+  };
+
+  const deleteTopic = async (id) => {
+    if (!window.confirm('Forum-Topic löschen?')) return;
+    await apiFetch(`/api/admin/topics/${id}`, { method: 'DELETE' });
+    setTopics(t => t.filter(x => x.id !== id));
+  };
+
+  const pinTopic = async (id) => {
+    const res = await apiFetch(`/api/admin/topics/${id}/pin`, { method: 'PUT' });
+    setTopics(t => t.map(x => x.id === id ? { ...x, pinned: res.pinned ? 1 : 0 } : x));
+  };
+
+  const TABS = [
+    { id: 'dashboard', label: '📊 Dashboard' },
+    { id: 'users', label: '👥 User' },
+    { id: 'posts', label: '📝 Posts' },
+    { id: 'forum', label: '💬 Forum' },
+  ];
+
+  const CATEGORY_LABELS = { general: 'Allgemein', sneakers: 'Sneakers', socks: 'Socken', collections: 'Sammlungen', trading: 'Börse', offtopic: 'Off-Topic' };
+
+  if (!user?.is_admin) return null;
+
+  return (
+    <div className="max-w-5xl mx-auto p-4 py-6">
+      <div className="flex items-center gap-3 mb-6">
+        <span className="text-3xl">⚙️</span>
+        <div>
+          <h1 className="text-2xl font-bold text-white">Admin-Panel</h1>
+          <p className="text-gray-500 text-sm">Eingeloggt als {user.username}</p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition ${tab === t.id ? 'bg-yellow-500 text-black' : 'bg-dark-300 text-gray-400 hover:text-white border border-dark-100'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <div className="text-center text-gray-400 py-10">Lade...</div>}
+
+      {/* DASHBOARD */}
+      {!loading && tab === 'dashboard' && stats && (
+        <div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+            {[
+              { label: 'User', value: stats.userCount, icon: '👥', color: 'text-blue-400' },
+              { label: 'Posts', value: stats.postCount, icon: '📝', color: 'text-green-400' },
+              { label: 'Kommentare', value: stats.commentCount, icon: '💬', color: 'text-purple-400' },
+              { label: 'Forum Topics', value: stats.topicCount, icon: '📋', color: 'text-orange-400' },
+              { label: 'Nachrichten', value: stats.messageCount, icon: '✉️', color: 'text-pink-400' },
+              { label: 'Gerade online', value: stats.onlineCount, icon: '🟢', color: 'text-emerald-400' },
+            ].map(s => (
+              <div key={s.label} className="bg-dark-300 rounded-2xl p-4 border border-dark-100">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl">{s.icon}</span>
+                  <span className="text-gray-400 text-sm">{s.label}</span>
+                </div>
+                <div className={`text-3xl font-bold ${s.color}`}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+          <div className="bg-dark-300 rounded-2xl p-4 border border-dark-100 text-center text-gray-500 text-sm">
+            Daten werden live aus der Datenbank geladen. Klicke einen Tab um Details zu sehen.
+          </div>
+        </div>
+      )}
+
+      {/* USERS */}
+      {!loading && tab === 'users' && (
+        <div className="space-y-3">
+          <p className="text-gray-400 text-sm mb-4">{users.length} User registriert</p>
+          {users.map(u => (
+            <div key={u.id} className="bg-dark-300 rounded-2xl p-4 border border-dark-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-950 flex-shrink-0 flex items-center justify-center overflow-hidden border border-dark-100">
+                {u.avatar ? <img src={getImageUrl(u.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-sm">{u.username[0].toUpperCase()}</span>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white font-bold text-sm">{u.display_name || u.username}</span>
+                  <span className="text-gray-500 text-xs">@{u.username}</span>
+                  {u.is_admin ? <span className="bg-yellow-500/20 text-yellow-400 text-xs px-2 py-0.5 rounded-full border border-yellow-700 font-bold">Admin</span> : null}
+                </div>
+                <p className="text-gray-500 text-xs mt-0.5 truncate">{u.email}</p>
+                <p className="text-gray-600 text-xs">Registriert: {new Date(u.created_at).toLocaleDateString('de-DE')}</p>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <button onClick={() => toggleAdmin(u.id)}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-bold transition ${u.is_admin ? 'bg-yellow-900/40 text-yellow-400 border border-yellow-800 hover:bg-yellow-900' : 'bg-dark-100 text-gray-400 border border-dark-100 hover:text-yellow-400'}`}>
+                  {u.is_admin ? '★ Admin' : '☆ Admin'}
+                </button>
+                {u.id !== user.id && (
+                  <button onClick={() => deleteUser(u.id, u.username)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-red-900/30 text-red-400 border border-red-900 hover:bg-red-900/60 font-bold transition">
+                    Löschen
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* POSTS */}
+      {!loading && tab === 'posts' && (
+        <div className="space-y-3">
+          <p className="text-gray-400 text-sm mb-4">{posts.length} Posts (neueste 100)</p>
+          {posts.map(p => (
+            <div key={p.id} className="bg-dark-300 rounded-2xl p-4 border border-dark-100">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-full bg-red-950 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                    {p.avatar ? <img src={getImageUrl(p.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-xs font-bold">{p.username[0].toUpperCase()}</span>}
+                  </div>
+                  <div>
+                    <span className="text-white text-sm font-bold">{p.display_name || p.username}</span>
+                    <span className="text-gray-500 text-xs ml-2">{new Date(p.created_at).toLocaleDateString('de-DE')}</span>
+                  </div>
+                </div>
+                <button onClick={() => deletePost(p.id)} className="text-xs px-3 py-1.5 rounded-lg bg-red-900/30 text-red-400 border border-red-900 hover:bg-red-900/60 font-bold transition flex-shrink-0">
+                  Löschen
+                </button>
+              </div>
+              <p className="text-gray-300 text-sm line-clamp-3 mb-2">{p.content}</p>
+              {p.image && <img src={getImageUrl(p.image)} className="h-16 rounded-lg object-cover" />}
+              <div className="flex gap-3 mt-2 text-xs text-gray-500">
+                <span>❤️ {p.like_count}</span>
+                <span>💬 {p.comment_count}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* FORUM */}
+      {!loading && tab === 'forum' && (
+        <div className="space-y-3">
+          <p className="text-gray-400 text-sm mb-4">{topics.length} Topics (neueste 100)</p>
+          {topics.map(t => (
+            <div key={t.id} className="bg-dark-300 rounded-2xl p-4 border border-dark-100">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    {t.pinned ? <span className="text-yellow-400 text-xs font-bold">📌 Gepinnt</span> : null}
+                    <span className="bg-dark-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">{CATEGORY_LABELS[t.category] || t.category}</span>
+                  </div>
+                  <p className="text-white font-bold text-sm truncate">{t.title}</p>
+                  <p className="text-gray-500 text-xs mt-0.5">von {t.display_name || t.username} · {new Date(t.created_at).toLocaleDateString('de-DE')} · 👁 {t.views} · 💬 {t.reply_count}</p>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button onClick={() => pinTopic(t.id)}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-bold transition border ${t.pinned ? 'bg-yellow-900/40 text-yellow-400 border-yellow-800' : 'bg-dark-100 text-gray-400 border-dark-100 hover:text-yellow-400'}`}>
+                    {t.pinned ? '📌' : '📍'}
+                  </button>
+                  <button onClick={() => deleteTopic(t.id)} className="text-xs px-3 py-1.5 rounded-lg bg-red-900/30 text-red-400 border border-red-900 hover:bg-red-900/60 font-bold transition">
+                    Löschen
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center text-red-500 font-bold text-xl">Lade Club...</div>;
@@ -1653,6 +1874,7 @@ export default function App() {
                       <Route path="/forum" element={<ForumPage />} />
                       <Route path="/forum/new" element={<CreateForumTopicPage />} />
                       <Route path="/forum/:id" element={<ForumTopicPage />} />
+                      <Route path="/admin" element={<AdminPage />} />
                     </Routes>
                   </main>
                 </div>

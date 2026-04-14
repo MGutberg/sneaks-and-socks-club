@@ -97,9 +97,12 @@ try {
 // Automatisch last_active Spalte bei alten Datenbanken nachrüsten
 try {
   db.exec("ALTER TABLE users ADD COLUMN last_active DATETIME DEFAULT CURRENT_TIMESTAMP;");
-} catch (e) {
-  // Spalte existiert bereits, Fehler ignorieren
-}
+} catch (e) { /* Spalte existiert bereits */ }
+
+// is_admin Spalte nachrüsten
+try {
+  db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;");
+} catch (e) { /* Spalte existiert bereits */ }
 
 app.use(cors());
 app.use(express.json());
@@ -141,7 +144,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   db.prepare("UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = ?").run(req.user.id);
-  res.json(db.prepare('SELECT id, username, email, display_name, avatar, bio, location, website FROM users WHERE id = ?').get(req.user.id));
+  res.json(db.prepare('SELECT id, username, email, display_name, avatar, bio, location, website, is_admin FROM users WHERE id = ?').get(req.user.id));
 });
 
 // --- HEARTBEAT & ONLINE COUNTER ---
@@ -611,6 +614,101 @@ app.delete('/api/forum/replies/:id', authenticateToken, (req, res) => {
   if (reply.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
   db.prepare('DELETE FROM forum_replies WHERE id = ?').run(req.params.id);
   res.json({ success: true });
+});
+
+// --- ADMIN ROUTES ---
+const authenticateAdmin = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No token' });
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ error: 'Invalid token' });
+    const user = db.prepare('SELECT id, username, is_admin FROM users WHERE id = ?').get(decoded.id);
+    if (!user || !user.is_admin) return res.status(403).json({ error: 'Admin only' });
+    req.user = decoded;
+    next();
+  });
+};
+
+app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
+  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  const postCount = db.prepare('SELECT COUNT(*) as c FROM posts').get().c;
+  const topicCount = db.prepare('SELECT COUNT(*) as c FROM forum_topics').get().c;
+  const messageCount = db.prepare('SELECT COUNT(*) as c FROM messages').get().c;
+  const commentCount = db.prepare('SELECT COUNT(*) as c FROM comments').get().c;
+  const onlineCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE last_active >= datetime('now', '-5 minutes')").get().c;
+  res.json({ userCount, postCount, topicCount, messageCount, commentCount, onlineCount });
+});
+
+app.get('/api/admin/users', authenticateAdmin, (req, res) => {
+  const users = db.prepare('SELECT id, username, display_name, email, avatar, bio, is_admin, created_at, last_active FROM users ORDER BY created_at DESC').all();
+  res.json(users);
+});
+
+app.put('/api/admin/users/:id/toggle-admin', authenticateAdmin, (req, res) => {
+  const user = db.prepare('SELECT id, is_admin FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.id === req.user.id) return res.status(400).json({ error: 'Cannot change your own admin status' });
+  db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(user.is_admin ? 0 : 1, req.params.id);
+  res.json({ is_admin: !user.is_admin });
+});
+
+app.delete('/api/admin/users/:id', authenticateAdmin, (req, res) => {
+  if (req.params.id === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
+  db.prepare('DELETE FROM likes WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM comments WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM reactions WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM follows WHERE follower_id = ? OR following_id = ?').run(req.params.id, req.params.id);
+  db.prepare('DELETE FROM messages WHERE sender_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM forum_replies WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM forum_topics WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM posts WHERE user_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+app.get('/api/admin/posts', authenticateAdmin, (req, res) => {
+  const posts = db.prepare(`
+    SELECT p.id, p.content, p.image, p.created_at,
+      u.username, u.display_name, u.avatar,
+      (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+      (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count
+    FROM posts p JOIN users u ON p.user_id = u.id
+    ORDER BY p.created_at DESC LIMIT 100
+  `).all();
+  res.json(posts);
+});
+
+app.delete('/api/admin/posts/:id', authenticateAdmin, (req, res) => {
+  db.prepare('DELETE FROM likes WHERE post_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM comments WHERE post_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM reactions WHERE post_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM posts WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+app.get('/api/admin/topics', authenticateAdmin, (req, res) => {
+  const topics = db.prepare(`
+    SELECT t.id, t.title, t.category, t.views, t.pinned, t.created_at,
+      u.username, u.display_name,
+      (SELECT COUNT(*) FROM forum_replies WHERE topic_id = t.id) as reply_count
+    FROM forum_topics t JOIN users u ON t.user_id = u.id
+    ORDER BY t.created_at DESC LIMIT 100
+  `).all();
+  res.json(topics);
+});
+
+app.delete('/api/admin/topics/:id', authenticateAdmin, (req, res) => {
+  db.prepare('DELETE FROM forum_replies WHERE topic_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM forum_topics WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+app.put('/api/admin/topics/:id/pin', authenticateAdmin, (req, res) => {
+  const topic = db.prepare('SELECT pinned FROM forum_topics WHERE id = ?').get(req.params.id);
+  if (!topic) return res.status(404).json({ error: 'Topic not found' });
+  db.prepare('UPDATE forum_topics SET pinned = ? WHERE id = ?').run(topic.pinned ? 0 : 1, req.params.id);
+  res.json({ pinned: !topic.pinned });
 });
 
 // --- FRONTEND SERVING ---

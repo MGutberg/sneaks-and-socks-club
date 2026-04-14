@@ -205,7 +205,7 @@ function TextWithMentions({ text, className }) {
     <p className={className}>
       {parts.map((part, i) =>
         /^@[a-zA-Z0-9_]+$/.test(part)
-          ? <Link key={i} to={`/u/${part.slice(1)}`} className="text-red-400 hover:text-red-300 font-medium">{part}</Link>
+          ? <Link key={i} to={`/profile/${part.slice(1)}`} className="text-red-400 hover:text-red-300 font-medium">{part}</Link>
           : part
       )}
     </p>
@@ -528,9 +528,12 @@ function ProfilePage() {
 
   const loadData = async () => {
     try {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const resolvedId = isUUID ? id : (await apiFetch(`/api/users/by-username/${id}`)).id;
+      if (!resolvedId) return;
       const [pData, pPosts] = await Promise.all([
-        apiFetch(`/api/users/${id}`),
-        apiFetch(`/api/users/${id}/posts`)
+        apiFetch(`/api/users/${resolvedId}`),
+        apiFetch(`/api/users/${resolvedId}/posts`)
       ]);
       setProfile(pData);
       setPosts(pPosts);
@@ -1614,20 +1617,6 @@ function ProtectedRoute({ children }) {
   return user ? children : <Navigate to="/login" />;
 }
 
-function UserByUsernameRedirect() {
-  const { username } = useParams();
-  const navigate = useNavigate();
-  const apiFetch = useApi();
-  useEffect(() => {
-    apiFetch(`/api/users/by-username/${username}`)
-      .then(data => {
-        if (data?.id) navigate(`/profile/${data.id}`, { replace: true });
-        else navigate('/', { replace: true });
-      })
-      .catch(() => navigate('/', { replace: true }));
-  }, [username]);
-  return <div className="min-h-screen flex items-center justify-center text-red-500 font-bold text-xl">Lade Profil...</div>;
-}
 
 export default function App() {
   return (
@@ -1654,7 +1643,6 @@ export default function App() {
                       <Route path="/forum" element={<ForumPage />} />
                       <Route path="/forum/new" element={<CreateForumTopicPage />} />
                       <Route path="/forum/:id" element={<ForumTopicPage />} />
-                      <Route path="/u/:username" element={<UserByUsernameRedirect />} />
                     </Routes>
                   </main>
                 </div>

@@ -184,6 +184,12 @@ app.get('/api/users', authenticateToken, (req, res) => {
   res.json(users);
 });
 
+app.get('/api/users/by-username/:username', authenticateToken, (req, res) => {
+  const user = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
+});
+
 app.get('/api/users/:id', authenticateToken, (req, res) => {
   const user = db.prepare('SELECT id, username, display_name, avatar, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });

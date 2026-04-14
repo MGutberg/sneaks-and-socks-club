@@ -198,6 +198,20 @@ function Navbar() {
 }
 
 // --- POST COMPONENT (Mit Likes & Comments) ---
+function TextWithMentions({ text, className }) {
+  if (!text) return null;
+  const parts = text.split(/(@[a-zA-Z0-9_]+)/g);
+  return (
+    <p className={className}>
+      {parts.map((part, i) =>
+        /^@[a-zA-Z0-9_]+$/.test(part)
+          ? <Link key={i} to={`/u/${part.slice(1)}`} className="text-red-400 hover:text-red-300 font-medium">{part}</Link>
+          : part
+      )}
+    </p>
+  );
+}
+
 const REACTION_EMOJIS = ['🔥', '👟', '🧦', '❤️', '😂'];
 
 function Post({ post, onRefresh }) {
@@ -264,7 +278,7 @@ function Post({ post, onRefresh }) {
         </div>
         {user?.id === post.user_id && <button onClick={handleDelete} className="text-gray-600 hover:text-red-500 transition p-1 flex-shrink-0" title="Löschen">🗑️</button>}
       </div>
-      <p className="text-gray-200 text-sm sm:text-[15px] mt-2 sm:mt-3 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+      <TextWithMentions text={post.content} className="text-gray-200 text-sm sm:text-[15px] mt-2 sm:mt-3 whitespace-pre-wrap leading-relaxed" />
       {post.image && <img src={getImageUrl(post.image)} className="mt-3 sm:mt-4 rounded-lg sm:rounded-xl w-full max-h-[400px] sm:max-h-[500px] object-cover" />}
       
       {/* Interaction Bar */}
@@ -311,7 +325,7 @@ function Post({ post, onRefresh }) {
                 </div>
                 <div className="bg-dark-100 p-3 rounded-xl flex-1">
                   <p className="text-white text-xs font-bold mb-1">@{c.username}</p>
-                  <p className="text-gray-300 text-sm">{c.content}</p>
+                  <TextWithMentions text={c.content} className="text-gray-300 text-sm" />
                 </div>
               </div>
             ))}
@@ -1370,7 +1384,7 @@ function ForumTopicPage() {
                 <button onClick={() => handleDeleteReply(reply.id)} className="text-gray-600 hover:text-red-500 transition p-1 text-sm">🗑️</button>
               )}
             </div>
-            <p className="text-gray-200 text-sm whitespace-pre-wrap">{reply.content}</p>
+            <TextWithMentions text={reply.content} className="text-gray-200 text-sm whitespace-pre-wrap" />
             {reply.image && <img src={getImageUrl(reply.image)} className="mt-2 sm:mt-3 rounded-lg w-full max-h-[300px] object-cover" />}
           </div>
         ))}
@@ -1600,6 +1614,18 @@ function ProtectedRoute({ children }) {
   return user ? children : <Navigate to="/login" />;
 }
 
+function UserByUsernameRedirect() {
+  const { username } = useParams();
+  const navigate = useNavigate();
+  const apiFetch = useApi();
+  useEffect(() => {
+    apiFetch(`/api/users/by-username/${username}`)
+      .then(data => navigate(`/profile/${data.id}`, { replace: true }))
+      .catch(() => navigate('/', { replace: true }));
+  }, [username]);
+  return <div className="min-h-screen flex items-center justify-center text-red-500 font-bold text-xl">Lade Profil...</div>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -1625,6 +1651,7 @@ export default function App() {
                       <Route path="/forum" element={<ForumPage />} />
                       <Route path="/forum/new" element={<CreateForumTopicPage />} />
                       <Route path="/forum/:id" element={<ForumTopicPage />} />
+                      <Route path="/u/:username" element={<UserByUsernameRedirect />} />
                     </Routes>
                   </main>
                 </div>

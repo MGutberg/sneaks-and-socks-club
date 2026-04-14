@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,11 +15,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'sneaks-and-socks-club-secret-key-2
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'database.sqlite');
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 
-function saveFileLocally(buffer, originalname) {
-  const ext = path.extname(originalname);
-  const filename = `${uuidv4()}${ext}`;
+async function saveFileLocally(buffer, originalname, isAvatar = false) {
+  const filename = `${uuidv4()}.webp`;
   const filepath = path.join(UPLOAD_DIR, filename);
-  fs.writeFileSync(filepath, buffer);
+  let pipeline = sharp(buffer);
+  if (isAvatar) {
+    pipeline = pipeline.resize(400, 400, { fit: 'cover', position: 'centre' });
+  } else {
+    pipeline = pipeline.resize(1200, 1200, { fit: 'inside', withoutEnlargement: true });
+  }
+  await pipeline.webp({ quality: 80 }).toFile(filepath);
   return `/uploads/${filename}`;
 }
 
@@ -214,10 +220,10 @@ app.get('/api/users/:id/following', authenticateToken, (req, res) => {
   res.json(following);
 });
 
-app.put('/api/users/:id', authenticateToken, upload.single('avatar'), (req, res) => {
+app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req, res) => {
   if (req.user.id !== req.params.id) return res.status(403).json({ error: 'Unauthorized' });
   const { display_name, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands } = req.body;
-  let avatar = req.file ? saveFileLocally(req.file.buffer, req.file.originalname) : null;
+  let avatar = req.file ? await saveFileLocally(req.file.buffer, req.file.originalname, true) : null;
   db.prepare(`UPDATE users SET display_name=COALESCE(?,display_name), bio=COALESCE(?,bio), avatar=COALESCE(?,avatar), location=COALESCE(?,location), website=COALESCE(?,website), favorite_sneakers=COALESCE(?,favorite_sneakers), favorite_socks=COALESCE(?,favorite_socks), sneaker_size=COALESCE(?,sneaker_size), sock_size=COALESCE(?,sock_size), favorite_brands=COALESCE(?,favorite_brands) WHERE id=?`)
     .run(display_name||null, bio||null, avatar||null, location||null, website||null, favorite_sneakers||null, favorite_socks||null, sneaker_size||null, sock_size||null, favorite_brands||null, req.params.id);
   res.json(db.prepare('SELECT id, username, display_name, avatar, bio, location, website FROM users WHERE id = ?').get(req.params.id));
@@ -248,10 +254,10 @@ app.get('/api/posts/gallery', authenticateToken, (req, res) => {
   res.json(galleryPosts);
 });
 
-app.post('/api/posts', authenticateToken, upload.single('image'), (req, res) => {
+app.post('/api/posts', authenticateToken, upload.single('image'), async (req, res) => {
   const { content } = req.body;
   const id = uuidv4();
-  const image = req.file ? saveFileLocally(req.file.buffer, req.file.originalname) : '';
+  const image = req.file ? await saveFileLocally(req.file.buffer, req.file.originalname) : '';
   db.prepare('INSERT INTO posts (id, user_id, content, image) VALUES (?, ?, ?, ?)').run(id, req.user.id, content || '', image);
   res.json(db.prepare('SELECT p.*, u.username, u.display_name, u.avatar FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = ?').get(id));
 });
@@ -526,11 +532,11 @@ app.get('/api/forum/topics/:id', authenticateToken, (req, res) => {
   res.json({ topic: { ...topic, views: topic.views + 1 }, replies });
 });
 
-app.post('/api/forum/topics', authenticateToken, upload.single('image'), (req, res) => {
+app.post('/api/forum/topics', authenticateToken, upload.single('image'), async (req, res) => {
   const { title, content, category } = req.body;
   if (!title || !content) return res.status(400).json({ error: 'Title and content required' });
   const id = uuidv4();
-  const image = req.file ? saveFileLocally(req.file.buffer, req.file.originalname) : '';
+  const image = req.file ? await saveFileLocally(req.file.buffer, req.file.originalname) : '';
   db.prepare('INSERT INTO forum_topics (id, user_id, title, content, image, category) VALUES (?, ?, ?, ?, ?, ?)').run(id, req.user.id, title, content, image, category || 'general');
   const topic = db.prepare(`
     SELECT t.*, u.username, u.display_name, u.avatar
@@ -550,13 +556,13 @@ app.delete('/api/forum/topics/:id', authenticateToken, (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/forum/topics/:id/replies', authenticateToken, upload.single('image'), (req, res) => {
+app.post('/api/forum/topics/:id/replies', authenticateToken, upload.single('image'), async (req, res) => {
   const { content } = req.body;
   if (!content) return res.status(400).json({ error: 'Content required' });
   const topic = db.prepare('SELECT * FROM forum_topics WHERE id = ?').get(req.params.id);
   if (!topic) return res.status(404).json({ error: 'Topic not found' });
   const id = uuidv4();
-  const image = req.file ? saveFileLocally(req.file.buffer, req.file.originalname) : '';
+  const image = req.file ? await saveFileLocally(req.file.buffer, req.file.originalname) : '';
   db.prepare('INSERT INTO forum_replies (id, topic_id, user_id, content, image) VALUES (?, ?, ?, ?, ?)').run(id, req.params.id, req.user.id, content, image);
   db.prepare('UPDATE forum_topics SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
   const reply = db.prepare(`

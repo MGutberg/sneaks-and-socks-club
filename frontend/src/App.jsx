@@ -9,6 +9,17 @@ const getApiUrl = () => {
 const API_URL = getApiUrl();
 const getImageUrl = (path) => path ? (path.startsWith('http') ? path : `${API_URL}${path.startsWith('/') ? '' : '/'}${path}`) : null;
 
+// --- THEME ---
+function useTheme() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  useEffect(() => {
+    document.documentElement.classList.toggle('light', theme === 'light');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+  const toggle = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+  return { theme, toggle };
+}
+
 // --- AUTH CONTEXT ---
 const AuthContext = createContext(null)
 
@@ -122,6 +133,7 @@ function Navbar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const loadNotifications = async () => {
     try {
@@ -226,6 +238,11 @@ function Navbar() {
               )}
             </div>
 
+            {/* Theme Toggle */}
+            <button onClick={toggleTheme} className="text-gray-400 hover:text-white transition p-2" title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}>
+              <span className="text-xl">{theme === 'dark' ? '☀️' : '🌙'}</span>
+            </button>
+
             {/* Saved Posts Icon */}
             <Link to="/saved" className="text-gray-400 hover:text-yellow-400 transition p-2" title="Gespeicherte Posts">
               <span className="text-xl">🔖</span>
@@ -299,6 +316,9 @@ function Navbar() {
                 <span>⚙️</span> Admin-Panel
               </Link>
             )}
+            <button onClick={() => { toggleTheme(); }} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl text-left">
+              <span>{theme === 'dark' ? '☀️' : '🌙'}</span> {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            </button>
             <button onClick={() => { logout(); navigate('/login'); setMobileMenuOpen(false); }} className="flex items-center gap-3 bg-dark-100 text-red-400 px-4 py-3 rounded-xl text-left">
               <span>🚪</span> Logout
             </button>

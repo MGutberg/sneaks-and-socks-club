@@ -198,6 +198,8 @@ function Navbar() {
 }
 
 // --- POST COMPONENT (Mit Likes & Comments) ---
+const REACTION_EMOJIS = ['🔥', '👟', '🧦', '❤️', '😂'];
+
 function Post({ post, onRefresh }) {
   const { user } = useAuth(); const apiFetch = useApi();
   const [liked, setLiked] = useState(!!post.liked);
@@ -205,6 +207,8 @@ function Post({ post, onRefresh }) {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
+  const [reactions, setReactions] = useState(post.reactions || {});
+  const [myReactions, setMyReactions] = useState(post.my_reactions || []);
 
   const handleDelete = async () => { if (window.confirm("Post löschen?")) { await apiFetch(`/api/posts/${post.id}`, { method: 'DELETE' }); onRefresh(); } }
   
@@ -213,6 +217,19 @@ function Post({ post, onRefresh }) {
       const res = await apiFetch(`/api/posts/${post.id}/like`, { method: 'POST' });
       setLiked(!!res.liked);
       setLikeCount(prev => res.liked ? prev + 1 : prev - 1);
+    } catch (err) { console.error(err); }
+  }
+
+  const handleReact = async (emoji) => {
+    try {
+      const res = await apiFetch(`/api/posts/${post.id}/react`, { method: 'POST', body: JSON.stringify({ emoji }) });
+      setReactions(prev => {
+        const next = { ...prev };
+        if (res.reacted) { next[emoji] = (next[emoji] || 0) + 1; }
+        else { next[emoji] = (next[emoji] || 1) - 1; if (next[emoji] <= 0) delete next[emoji]; }
+        return next;
+      });
+      setMyReactions(prev => res.reacted ? [...prev, emoji] : prev.filter(e => e !== emoji));
     } catch (err) { console.error(err); }
   }
 
@@ -256,11 +273,25 @@ function Post({ post, onRefresh }) {
           <span>{liked ? '❤️' : '🤍'}</span>
           <span className="text-sm font-medium">{likeCount}</span>
         </button>
-        {/* ÄNDERUNG: Blau-Hover-Effekt zu Rot-Hover gewechselt */}
         <button onClick={() => { setShowComments(!showComments); if (!showComments) loadComments(); }} className="flex items-center gap-2 text-gray-400 hover:text-red-400 transition">
           <span>💬</span>
           <span className="text-sm font-medium">{post.comment_count || 0}</span>
         </button>
+      </div>
+
+      {/* Emoji Reactions */}
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
+        {REACTION_EMOJIS.map(emoji => {
+          const count = reactions[emoji] || 0;
+          const reacted = myReactions.includes(emoji);
+          return (
+            <button key={emoji} onClick={() => handleReact(emoji)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm transition border ${reacted ? 'border-red-500 bg-red-950 text-white' : 'border-dark-100 text-gray-400 hover:border-gray-500'}`}>
+              <span>{emoji}</span>
+              {count > 0 && <span className="text-xs font-medium">{count}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Comments Section */}

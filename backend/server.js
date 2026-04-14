@@ -82,6 +82,11 @@ db.exec(`
     FOREIGN KEY (topic_id) REFERENCES forum_topics(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS reactions (
+    id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    emoji TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(post_id, user_id, emoji)
+  );
 `);
 
 // Automatisch Spalten bei alten Datenbanken nachrüsten
@@ -235,10 +240,18 @@ app.get('/api/posts', authenticateToken, (req, res) => {
     SELECT p.*, u.username, u.display_name, u.avatar,
     (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
     (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count,
-    (SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as liked
+    (SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as liked,
+    (SELECT json_group_object(emoji, c) FROM (SELECT emoji, COUNT(*) as c FROM reactions WHERE post_id = p.id GROUP BY emoji)) as reactions_json,
+    (SELECT json_group_array(emoji) FROM reactions WHERE post_id = p.id AND user_id = ?) as my_reactions_json
     FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC
-  `).all(req.user.id);
-  res.json(posts);
+  `).all(req.user.id, req.user.id);
+  res.json(posts.map(p => ({
+    ...p,
+    reactions: p.reactions_json ? JSON.parse(p.reactions_json) : {},
+    my_reactions: p.my_reactions_json ? JSON.parse(p.my_reactions_json) : [],
+    reactions_json: undefined,
+    my_reactions_json: undefined
+  })));
 });
 
 // NEUE ROUTE: API für die Gimmick-Galerie
@@ -283,6 +296,20 @@ app.post('/api/posts/:id/like', authenticateToken, (req, res) => {
   } else {
     db.prepare('INSERT INTO likes (id, post_id, user_id) VALUES (?, ?, ?)').run(uuidv4(), req.params.id, req.user.id);
     res.json({ liked: 1 });
+  }
+});
+
+app.post('/api/posts/:id/react', authenticateToken, (req, res) => {
+  const ALLOWED = ['🔥', '👟', '🧦', '❤️', '😂'];
+  const { emoji } = req.body;
+  if (!ALLOWED.includes(emoji)) return res.status(400).json({ error: 'Invalid emoji' });
+  const existing = db.prepare('SELECT id FROM reactions WHERE post_id = ? AND user_id = ? AND emoji = ?').get(req.params.id, req.user.id, emoji);
+  if (existing) {
+    db.prepare('DELETE FROM reactions WHERE id = ?').run(existing.id);
+    res.json({ reacted: false, emoji });
+  } else {
+    db.prepare('INSERT INTO reactions (id, post_id, user_id, emoji) VALUES (?, ?, ?, ?)').run(uuidv4(), req.params.id, req.user.id, emoji);
+    res.json({ reacted: true, emoji });
   }
 });
 

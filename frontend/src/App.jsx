@@ -749,6 +749,7 @@ function ProfilePage() {
   const [followingList, setFollowingList] = useState([]);
   const [externalLinkModal, setExternalLinkModal] = useState(null);
   const [visitors, setVisitors] = useState([]);
+  const [stats, setStats] = useState(null);
   const galleryInputRef = useRef(null);
   const apiFetch = useApi();
 
@@ -764,12 +765,14 @@ function ProfilePage() {
         apiFetch(`/api/users/${resolvedId}`),
         apiFetch(`/api/users/${resolvedId}/posts`),
         apiFetch(`/api/users/${resolvedId}/gallery`),
+        apiFetch(`/api/users/${resolvedId}/stats`),
       ];
       if (isOwn) requests.push(apiFetch('/api/profile/visitors'));
-      const [pData, pPosts, pGallery, pVisitors] = await Promise.all(requests);
+      const [pData, pPosts, pGallery, pStats, pVisitors] = await Promise.all(requests);
       setProfile(pData);
       setPosts(pPosts);
       setGallery(pGallery);
+      setStats(pStats);
       if (isOwn) setVisitors(pVisitors || []);
       setEditForm(pData);
       setIsFollowing(pData.is_following || false);
@@ -1055,6 +1058,37 @@ function ProfilePage() {
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" onClick={() => setLightbox(null)}>
           <button className="absolute top-4 right-4 text-white text-3xl font-bold hover:text-red-400 transition">×</button>
           <img src={getImageUrl(lightbox)} className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
+
+      {/* Profil-Statistiken */}
+      {stats && (
+        <div className="bg-dark-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-dark-100 mb-4 sm:mb-8 shadow-lg">
+          <h2 className="text-xl font-bold text-white mb-4">Statistiken</h2>
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+            {[
+              { label: 'Posts', value: stats.posts, icon: '📝' },
+              { label: 'Follower', value: stats.followers, icon: '👥' },
+              { label: 'Following', value: stats.following, icon: '➡️' },
+              { label: 'Likes', value: stats.likes_received, icon: '❤️' },
+              { label: 'Kommentare', value: stats.comments_received, icon: '💬' },
+              { label: 'Reaktionen', value: stats.reactions_received, icon: '🔥' },
+              { label: 'Topics', value: stats.forum_topics, icon: '📌' },
+              { label: 'Replies', value: stats.forum_replies, icon: '↩️' },
+              { label: 'Profilaufrufe', value: stats.profile_views, icon: '👁️' },
+            ].map(s => (
+              <div key={s.label} className="bg-dark-100 rounded-xl p-3 text-center">
+                <div className="text-lg sm:text-xl mb-1">{s.icon}</div>
+                <div className="text-lg sm:text-2xl font-bold text-white">{s.value}</div>
+                <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">{s.label}</div>
+              </div>
+            ))}
+          </div>
+          {stats.member_since && (
+            <p className="text-xs text-gray-500 text-center mt-4">
+              Mitglied seit {new Date(stats.member_since).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })}
+            </p>
+          )}
         </div>
       )}
 

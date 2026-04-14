@@ -1,6 +1,6 @@
 # Sneaks & Socks Club - Session Summary
-**Datum:** 2026-04-14
-**Letzter Commit:** 73b6c0d
+**Datum:** 2026-04-15
+**Letzter Commit:** b6dca3d
 
 ## Projekt-Übersicht
 Social Media Plattform für Sneaker- und Socken-Enthusiasten.
@@ -90,7 +90,42 @@ Im Profil wird eine Box "Persönliche Angaben" angezeigt, sobald mind. ein Feld 
 - Verlinkung zum jeweiligen Profil via Username
 - Route: `GET /api/profile/visitors`
 
-### 10. UI/UX
+### 10. Emoji-Reaktionen
+- Reaktionen auf Posts: 🔥👟🧦❤️😂
+- Toggle pro User+Emoji (UNIQUE-Constraint)
+- Tabelle: `reactions` (post_id, user_id, emoji)
+
+### 11. @Mentions
+- @username in Posts, Kommentaren und Forum-Replies wird automatisch verlinkt
+- Case-insensitive Username-Lookup
+- `ProfilePage` löst Username direkt auf
+
+### 12. Benachrichtigungs-System (In-App)
+- Notifications für: Follow, Like, Kommentar, Forum-Reply, Nachricht
+- Tabelle: `notifications` (type, actor_id, content_id, read_at)
+- Avatar-URLs korrekt ohne Doppel-Slash
+
+### 13. Admin-Panel
+- Dashboard mit Statistiken
+- User-Management (Admin-Flag, Löschen)
+- Moderation von Posts und Forum-Inhalten
+- `authenticateAdmin`-Middleware
+
+### 14. Reporting-System
+- Melde-Button auf Posts, Kommentaren, Forum-Inhalten
+- Admins sehen Melde-Button auf allem
+- Admin-Moderationspanel mit offenen/erledigten Reports
+- Tabelle: `reports` (reporter_id, content_type, content_id, reason, status)
+
+### 15. Edit-Funktion
+- Posts, Forum-Topics und Replies bearbeitbar (nur eigene + Admin)
+
+### 16. Bild-Komprimierung
+- Sharp-basierte Komprimierung beim Upload
+- WebP-Output, max 1200px
+- Avatare auf 400x400 zugeschnitten
+
+### 17. UI/UX
 - Responsive Design (Mobile Hamburger-Menü)
 - Dark Theme mit Kontrast-Grautönen
 - Streetart Hintergrund
@@ -155,6 +190,22 @@ UNIQUE(user_id, post_id)
 ### Profile Views
 ```sql
 id, profile_id, viewer_id, viewed_at
+```
+
+### Reactions
+```sql
+id, post_id, user_id, emoji, created_at
+UNIQUE(post_id, user_id, emoji)
+```
+
+### Reports
+```sql
+id, reporter_id, content_type, content_id, reason, status, created_at
+```
+
+### Notifications
+```sql
+id, user_id, type, actor_id, content_id, read_at, created_at
 ```
 
 ## Test-Accounts
@@ -227,10 +278,13 @@ cd backend && node server.js
 cd frontend && npm run dev
 ```
 
+## Erledigte Punkte (ehemals offen)
+- [x] Bilder-Komprimierung beim Upload (Sharp / WebP)
+- [x] Admin-Panel
+- [x] Reporting-System
+- [x] Emoji-Reaktionen
+- [x] @Mentions in Posts/Replies
+- [x] In-App Benachrichtigungen (Follow/Like/Kommentar/Reply/Message)
+
 ## Offene Punkte / Ideen für später
-- [ ] Bilder-Komprimierung beim Upload
-- [ ] Push-Benachrichtigungen
-- [ ] Admin-Panel
-- [ ] Reporting-System
-- [ ] Emoji-Reaktionen
-- [ ] @Mentions in Posts/Replies
+- [ ] Echte Push-Benachrichtigungen (Browser/Mobile, aktuell nur in-app)

@@ -290,6 +290,25 @@ app.get('/api/profile/visitors', authenticateToken, (req, res) => {
   }
   res.json(unique);
 });
+app.get('/api/users/:id/stats', authenticateToken, (req, res) => {
+  const uid = req.params.id;
+  const user = db.prepare('SELECT created_at FROM users WHERE id = ?').get(uid);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const stats = {
+    posts: db.prepare('SELECT COUNT(*) as c FROM posts WHERE user_id = ?').get(uid).c,
+    followers: db.prepare('SELECT COUNT(*) as c FROM follows WHERE following_id = ?').get(uid).c,
+    following: db.prepare('SELECT COUNT(*) as c FROM follows WHERE follower_id = ?').get(uid).c,
+    likes_received: db.prepare('SELECT COUNT(*) as c FROM likes l JOIN posts p ON p.id = l.post_id WHERE p.user_id = ?').get(uid).c,
+    comments_received: db.prepare('SELECT COUNT(*) as c FROM comments co JOIN posts p ON p.id = co.post_id WHERE p.user_id = ?').get(uid).c,
+    reactions_received: db.prepare('SELECT COUNT(*) as c FROM reactions r JOIN posts p ON p.id = r.post_id WHERE p.user_id = ?').get(uid).c,
+    forum_topics: db.prepare('SELECT COUNT(*) as c FROM forum_topics WHERE user_id = ?').get(uid).c,
+    forum_replies: db.prepare('SELECT COUNT(*) as c FROM forum_replies WHERE user_id = ?').get(uid).c,
+    profile_views: db.prepare('SELECT COUNT(DISTINCT viewer_id) as c FROM profile_views WHERE profile_id = ?').get(uid).c,
+    member_since: user.created_at,
+  };
+  res.json(stats);
+});
+
 app.get('/api/users/:id/posts', authenticateToken, (req, res) => {
   const posts = db.prepare(`
     SELECT p.*, u.username, u.display_name, u.avatar,

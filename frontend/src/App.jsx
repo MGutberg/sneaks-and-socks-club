@@ -285,8 +285,19 @@ function Post({ post, onRefresh }) {
   const [reactions, setReactions] = useState(post.reactions || {});
   const [myReactions, setMyReactions] = useState(post.my_reactions || []);
   const [reportTarget, setReportTarget] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
 
   const handleDelete = async () => { if (window.confirm("Post löschen?")) { await apiFetch(`/api/posts/${post.id}`, { method: 'DELETE' }); onRefresh(); } }
+
+  const handleEditSave = async () => {
+    if (!editContent.trim()) return;
+    try {
+      await apiFetch(`/api/posts/${post.id}`, { method: 'PUT', body: JSON.stringify({ content: editContent }) });
+      setEditing(false);
+      onRefresh();
+    } catch (e) { console.error(e); }
+  };
   
   const handleLike = async () => {
     try {
@@ -340,10 +351,22 @@ function Post({ post, onRefresh }) {
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {(user?.id !== post.user_id || user?.is_admin) && <button onClick={() => setReportTarget({ type: 'post', id: post.id })} className="text-gray-600 hover:text-orange-400 transition p-1" title="Melden">🚩</button>}
+          {user?.id === post.user_id && <button onClick={() => { setEditing(true); setEditContent(post.content); }} className="text-gray-600 hover:text-blue-400 transition p-1" title="Bearbeiten">✏️</button>}
           {user?.id === post.user_id && <button onClick={handleDelete} className="text-gray-600 hover:text-red-500 transition p-1" title="Löschen">🗑️</button>}
         </div>
       </div>
-      <TextWithMentions text={post.content} className="text-gray-200 text-sm sm:text-[15px] mt-2 sm:mt-3 whitespace-pre-wrap leading-relaxed" />
+      {editing ? (
+        <div className="mt-2 sm:mt-3">
+          <textarea value={editContent} onChange={e => setEditContent(e.target.value)} rows={4}
+            className="w-full bg-dark-300 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none text-sm resize-none" />
+          <div className="flex gap-2 mt-2">
+            <button onClick={handleEditSave} className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-red-700 transition">Speichern</button>
+            <button onClick={() => setEditing(false)} className="bg-dark-300 text-gray-400 px-4 py-1.5 rounded-lg text-sm hover:text-white transition">Abbrechen</button>
+          </div>
+        </div>
+      ) : (
+        <TextWithMentions text={post.content} className="text-gray-200 text-sm sm:text-[15px] mt-2 sm:mt-3 whitespace-pre-wrap leading-relaxed" />
+      )}
       {post.image && <img src={getImageUrl(post.image)} className="mt-3 sm:mt-4 rounded-lg sm:rounded-xl w-full max-h-[400px] sm:max-h-[500px] object-cover" />}
       
       {/* Interaction Bar */}
@@ -1354,6 +1377,11 @@ function ForumTopicPage() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reportTarget, setReportTarget] = useState(null);
+  const [editingTopic, setEditingTopic] = useState(false);
+  const [editTopicTitle, setEditTopicTitle] = useState('');
+  const [editTopicContent, setEditTopicContent] = useState('');
+  const [editingReplyId, setEditingReplyId] = useState(null);
+  const [editReplyContent, setEditReplyContent] = useState('');
   const apiFetch = useApi();
   const navigate = useNavigate();
 
@@ -1400,6 +1428,24 @@ function ForumTopicPage() {
     } catch (e) { console.error(e); }
   };
 
+  const handleEditTopicSave = async () => {
+    if (!editTopicTitle.trim() || !editTopicContent.trim()) return;
+    try {
+      const updated = await apiFetch(`/api/forum/topics/${id}`, { method: 'PUT', body: JSON.stringify({ title: editTopicTitle, content: editTopicContent }) });
+      setTopic(updated);
+      setEditingTopic(false);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleEditReplySave = async (replyId) => {
+    if (!editReplyContent.trim()) return;
+    try {
+      const updated = await apiFetch(`/api/forum/replies/${replyId}`, { method: 'PUT', body: JSON.stringify({ content: editReplyContent }) });
+      setReplies(replies.map(r => r.id === replyId ? updated : r));
+      setEditingReplyId(null);
+    } catch (e) { console.error(e); }
+  };
+
   if (loading) return <div className="max-w-4xl mx-auto py-8 px-4 text-center text-gray-400">Lade Thema...</div>;
   if (!topic) return <div className="max-w-4xl mx-auto py-8 px-4 text-center text-gray-400">Thema nicht gefunden</div>;
 
@@ -1426,11 +1472,27 @@ function ForumTopicPage() {
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             {(user?.id !== topic.user_id || user?.is_admin) && <button onClick={() => setReportTarget({ type: 'topic', id: topic.id })} className="text-gray-600 hover:text-orange-400 transition p-1" title="Melden">🚩</button>}
+            {user?.id === topic.user_id && <button onClick={() => { setEditingTopic(true); setEditTopicTitle(topic.title); setEditTopicContent(topic.content); }} className="text-gray-600 hover:text-blue-400 transition p-1" title="Bearbeiten">✏️</button>}
             {user?.id === topic.user_id && <button onClick={handleDeleteTopic} className="text-gray-600 hover:text-red-500 transition p-1" title="Löschen">🗑️</button>}
           </div>
         </div>
-        <h1 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">{topic.title}</h1>
-        <p className="text-gray-200 text-sm sm:text-base whitespace-pre-wrap leading-relaxed">{topic.content}</p>
+        {editingTopic ? (
+          <div className="mt-2">
+            <input value={editTopicTitle} onChange={e => setEditTopicTitle(e.target.value)}
+              className="w-full bg-dark-300 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none text-base font-bold mb-2" />
+            <textarea value={editTopicContent} onChange={e => setEditTopicContent(e.target.value)} rows={5}
+              className="w-full bg-dark-300 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none text-sm resize-none" />
+            <div className="flex gap-2 mt-2">
+              <button onClick={handleEditTopicSave} className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-red-700 transition">Speichern</button>
+              <button onClick={() => setEditingTopic(false)} className="bg-dark-300 text-gray-400 px-4 py-1.5 rounded-lg text-sm hover:text-white transition">Abbrechen</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">{topic.title}</h1>
+            <p className="text-gray-200 text-sm sm:text-base whitespace-pre-wrap leading-relaxed">{topic.content}</p>
+          </>
+        )}
         {topic.image && <img src={getImageUrl(topic.image)} className="mt-3 sm:mt-4 rounded-lg sm:rounded-xl w-full max-h-[400px] sm:max-h-[500px] object-cover" />}
         <div className="flex items-center gap-4 mt-4 pt-4 border-t border-dark-100 text-xs sm:text-sm text-gray-500">
           <span className="flex items-center gap-1">💬 {replies.length} Antworten</span>
@@ -1456,11 +1518,23 @@ function ForumTopicPage() {
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 {(user?.id !== reply.user_id || user?.is_admin) && <button onClick={() => setReportTarget({ type: 'reply', id: reply.id })} className="text-gray-600 hover:text-orange-400 transition p-1 text-sm" title="Melden">🚩</button>}
+                {user?.id === reply.user_id && <button onClick={() => { setEditingReplyId(reply.id); setEditReplyContent(reply.content); }} className="text-gray-600 hover:text-blue-400 transition p-1 text-sm" title="Bearbeiten">✏️</button>}
                 {user?.id === reply.user_id && <button onClick={() => handleDeleteReply(reply.id)} className="text-gray-600 hover:text-red-500 transition p-1 text-sm">🗑️</button>}
               </div>
             </div>
-            <TextWithMentions text={reply.content} className="text-gray-200 text-sm whitespace-pre-wrap" />
-            {reply.image && <img src={getImageUrl(reply.image)} className="mt-2 sm:mt-3 rounded-lg w-full max-h-[300px] object-cover" />}
+            {editingReplyId === reply.id ? (
+              <div>
+                <textarea value={editReplyContent} onChange={e => setEditReplyContent(e.target.value)} rows={3}
+                  className="w-full bg-dark-300 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none text-sm resize-none" />
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => handleEditReplySave(reply.id)} className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-red-700 transition">Speichern</button>
+                  <button onClick={() => setEditingReplyId(null)} className="bg-dark-300 text-gray-400 px-4 py-1.5 rounded-lg text-sm hover:text-white transition">Abbrechen</button>
+                </div>
+              </div>
+            ) : (
+              <TextWithMentions text={reply.content} className="text-gray-200 text-sm whitespace-pre-wrap" />
+            )}
+            {reply.image && <img src={getImageUrl(reply.image)} className="mt-2 sm:mt-3 rounded-lg w-full max-h-[300px] object-cover" />
           </div>
         ))}
       </div>

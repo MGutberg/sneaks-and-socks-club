@@ -294,6 +294,15 @@ app.post('/api/posts', authenticateToken, upload.single('image'), async (req, re
   res.json(db.prepare('SELECT p.*, u.username, u.display_name, u.avatar FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = ?').get(id));
 });
 
+app.put('/api/posts/:id', authenticateToken, (req, res) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  if (!post || post.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  const { content } = req.body;
+  if (!content?.trim()) return res.status(400).json({ error: 'Content required' });
+  db.prepare('UPDATE posts SET content = ? WHERE id = ?').run(content.trim(), req.params.id);
+  res.json(db.prepare('SELECT p.*, u.username, u.display_name, u.avatar FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = ?').get(req.params.id));
+});
+
 app.delete('/api/posts/:id', authenticateToken, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post || post.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
@@ -591,6 +600,16 @@ app.post('/api/forum/topics', authenticateToken, upload.single('image'), async (
   res.json(topic);
 });
 
+app.put('/api/forum/topics/:id', authenticateToken, (req, res) => {
+  const topic = db.prepare('SELECT * FROM forum_topics WHERE id = ?').get(req.params.id);
+  if (!topic) return res.status(404).json({ error: 'Not found' });
+  if (topic.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  const { title, content } = req.body;
+  if (!title?.trim() || !content?.trim()) return res.status(400).json({ error: 'Title and content required' });
+  db.prepare('UPDATE forum_topics SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(title.trim(), content.trim(), req.params.id);
+  res.json(db.prepare('SELECT t.*, u.username, u.display_name, u.avatar FROM forum_topics t JOIN users u ON t.user_id = u.id WHERE t.id = ?').get(req.params.id));
+});
+
 app.delete('/api/forum/topics/:id', authenticateToken, (req, res) => {
   const topic = db.prepare('SELECT * FROM forum_topics WHERE id = ?').get(req.params.id);
   if (!topic) return res.status(404).json({ error: 'Topic not found' });
@@ -616,6 +635,16 @@ app.post('/api/forum/topics/:id/replies', authenticateToken, upload.single('imag
     FROM forum_replies r JOIN users u ON r.user_id = u.id WHERE r.id = ?
   `).get(id);
   res.json(reply);
+});
+
+app.put('/api/forum/replies/:id', authenticateToken, (req, res) => {
+  const reply = db.prepare('SELECT * FROM forum_replies WHERE id = ?').get(req.params.id);
+  if (!reply) return res.status(404).json({ error: 'Not found' });
+  if (reply.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  const { content } = req.body;
+  if (!content?.trim()) return res.status(400).json({ error: 'Content required' });
+  db.prepare('UPDATE forum_replies SET content = ? WHERE id = ?').run(content.trim(), reply.id);
+  res.json(db.prepare('SELECT r.*, u.username, u.display_name, u.avatar FROM forum_replies r JOIN users u ON r.user_id = u.id WHERE r.id = ?').get(reply.id));
 });
 
 app.delete('/api/forum/replies/:id', authenticateToken, (req, res) => {

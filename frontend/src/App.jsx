@@ -1562,27 +1562,37 @@ function MembersPage() {
   )
 }
 
-// --- AUTH PAGES (Aktualisiert für Farbschema & Hintergrund) ---
+// --- AUTH PAGES ---
 function LoginPage() {
   const [u, setU] = useState(''), [p, setP] = useState(''), { login } = useAuth(), nav = useNavigate();
   const sub = async (e) => { e.preventDefault(); try { await login(u, p); nav('/'); } catch (err) { alert(err.message); } };
 
   return (
     <div className="flex items-center justify-center min-h-screen px-4" style={{ backgroundImage: `url('/streetart.png')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-      {/* ÄNDERUNG: Container-Hintergrund verdunkelt, leicht transparent */}
-      <form onSubmit={sub} className="bg-black/90 p-8 sm:p-10 rounded-3xl w-full max-w-sm border border-dark-100 shadow-2xl backdrop-blur-sm">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-dark-100 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-dark-100"><span className="text-3xl">👟</span></div>
-          <h2 className="text-white text-2xl font-bold">Willkommen zurück</h2>
+      <div className="flex w-full max-w-2xl gap-4 items-stretch">
+        {/* Login Form */}
+        <form onSubmit={sub} className="bg-black/90 p-8 sm:p-10 rounded-3xl w-full border border-dark-100 shadow-2xl backdrop-blur-sm flex flex-col justify-center">
+          <div className="text-center mb-8">
+            <h2 className="text-white text-3xl font-bold tracking-tight">Willkommen zurück</h2>
+            <p className="text-gray-500 text-sm mt-2">Einloggen und im Club bleiben</p>
+          </div>
+          <div className="mb-4">
+            <label className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-2 block">Username</label>
+            <input type="text" placeholder="Dein Username" className="w-full p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition placeholder-gray-600" onChange={e => setU(e.target.value)} required />
+          </div>
+          <div className="mb-8">
+            <label className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-2 block">Passwort</label>
+            <input type="password" placeholder="••••••••" className="w-full p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition placeholder-gray-600" onChange={e => setP(e.target.value)} required />
+          </div>
+          <button className="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white py-4 rounded-xl font-bold transition shadow-lg text-lg tracking-wide">Einloggen</button>
+          <p className="text-gray-500 text-sm mt-6 text-center">Neu im Club? <Link to="/register" className="text-red-500 font-bold hover:underline">Jetzt registrieren</Link></p>
+        </form>
+
+        {/* Logo Panel */}
+        <div className="hidden sm:flex bg-black/80 rounded-3xl border border-dark-100 shadow-2xl backdrop-blur-sm w-full items-center justify-center p-6">
+          <img src="/logo.png" alt="Sneaker Socks Club" className="w-full h-full object-contain max-h-80" />
         </div>
-        {/* ÄNDERUNG: Input-Hintergrund verdunkelt, Fokus-Rand zu Rot gewechselt */}
-        <input type="text" placeholder="Username" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition" onChange={e => setU(e.target.value)} required />
-        <input type="password" placeholder="Passwort" className="w-full mb-8 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition" onChange={e => setP(e.target.value)} required />
-        {/* ÄNDERUNG: Blau-Button zu Rot-Button gewechselt, Hover-Effekt */}
-        <button className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-bold transition shadow-lg text-lg">Einloggen</button>
-        {/* ÄNDERUNG: Blau-Link zu Rot-Link gewechselt */}
-        <p className="text-gray-500 text-sm mt-6 text-center">Neu im Club? <Link to="/register" className="text-red-500 font-bold hover:underline">Registrieren</Link></p>
-      </form>
+      </div>
     </div>
   )
 }

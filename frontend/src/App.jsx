@@ -195,6 +195,7 @@ function Navbar() {
             </div>
             <Link to="/members" className="text-gray-400 hover:text-white transition text-sm font-medium ml-1">Members</Link>
             <Link to="/forum" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">💬 Forum</Link>
+            <Link to="/market" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">🛒 Markt</Link>
             {user?.is_admin && <Link to="/admin" className="text-yellow-400 hover:text-yellow-300 transition text-sm font-bold ml-3">⚙️ Admin</Link>}
           </div>
 
@@ -307,6 +308,9 @@ function Navbar() {
             </Link>
             <Link to="/forum" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>💬</span> Forum
+            </Link>
+            <Link to="/market" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
+              <span>🛒</span> Marktplatz
             </Link>
             <Link to="/saved" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>🔖</span> Gespeicherte Posts
@@ -1716,6 +1720,331 @@ function ConversationPage() {
 }
 
 // --- FORUM PAGES ---
+// --- MARKETPLACE ---
+const MARKET_STATUS_LABELS = { active: 'Verfügbar', reserved: 'Reserviert', sold: 'Verkauft' };
+const MARKET_STATUS_COLORS = { active: 'bg-green-600', reserved: 'bg-yellow-600', sold: 'bg-gray-500' };
+
+function MarketPage() {
+  const [meta, setMeta] = useState({ categories: [], conditions: [], statuses: [] });
+  const [category, setCategory] = useState('all');
+  const [status, setStatus] = useState('active');
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+
+  useEffect(() => { apiFetch('/api/market/meta').then(setMeta).catch(() => {}); }, []);
+
+  const { items: listings, loading, hasMore, sentinelRef } = useInfiniteList(
+    (offset, limit) => {
+      const parts = [`offset=${offset}`, `limit=${limit}`, `status=${status}`];
+      if (category !== 'all') parts.push(`category=${category}`);
+      return `/api/market/listings?${parts.join('&')}`;
+    },
+    [category, status]
+  );
+
+  const catInfo = (id) => meta.categories.find(c => c.id === id) || { name: id, icon: '📦' };
+
+  return (
+    <div className="max-w-5xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Marktplatz</h1>
+          <p className="text-gray-500 text-xs sm:text-sm">Kaufen, verkaufen, tauschen</p>
+        </div>
+        <button onClick={() => navigate('/market/new')} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm sm:text-base">
+          <span>+</span> Neues Inserat
+        </button>
+      </div>
+
+      {/* Category filter */}
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide">
+        <button onClick={() => setCategory('all')} className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition ${category === 'all' ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>Alle</button>
+        {meta.categories.map(c => (
+          <button key={c.id} onClick={() => setCategory(c.id)} className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5 ${category === c.id ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>
+            <span>{c.icon}</span> {c.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Status filter */}
+      <div className="flex gap-2 mb-4 sm:mb-6">
+        {['active', 'reserved', 'sold'].map(s => (
+          <button key={s} onClick={() => setStatus(s)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${status === s ? MARKET_STATUS_COLORS[s] + ' text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>
+            {MARKET_STATUS_LABELS[s]}
+          </button>
+        ))}
+      </div>
+
+      {loading && listings.length === 0 ? (
+        <div className="text-center text-gray-400 py-10">Lade Inserate...</div>
+      ) : listings.length === 0 ? (
+        <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl border border-dark-100">
+          <span className="text-4xl sm:text-5xl">🛒</span>
+          <p className="text-gray-400 mt-3 font-medium text-sm">Keine Inserate in dieser Kategorie</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            {listings.map(l => (
+              <Link key={l.id} to={`/market/${l.id}`} className="bg-dark-200 rounded-xl border border-dark-100 hover:border-red-500 overflow-hidden transition group">
+                <div className="aspect-square bg-dark-100 relative overflow-hidden">
+                  {l.images[0] ? <img src={getImageUrl(l.images[0])} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                    : <div className="w-full h-full flex items-center justify-center text-5xl">{catInfo(l.category).icon}</div>}
+                  <span className={`absolute top-2 right-2 text-xs font-bold text-white px-2 py-1 rounded ${MARKET_STATUS_COLORS[l.status]}`}>{MARKET_STATUS_LABELS[l.status]}</span>
+                </div>
+                <div className="p-2.5 sm:p-3">
+                  <h3 className="text-white font-bold text-sm truncate">{l.title}</h3>
+                  <p className="text-red-400 font-bold mt-1">{Number(l.price).toFixed(2)} €</p>
+                  <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                    <span>{catInfo(l.category).icon}</span>
+                    <span className="truncate">@{l.username}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+          {hasMore && <div ref={sentinelRef} className="h-10 mt-4" />}
+          {loading && listings.length > 0 && <div className="text-center text-gray-500 text-sm py-4">Lade...</div>}
+          {!hasMore && <div className="text-center text-gray-600 text-xs py-4">— Ende —</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MarketDetailPage() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [listing, setListing] = useState(null);
+  const [meta, setMeta] = useState({ categories: [], conditions: [], statuses: [] });
+  const [imgIdx, setImgIdx] = useState(0);
+
+  useEffect(() => {
+    apiFetch(`/api/market/listings/${id}`).then(l => { setListing(l); setImgIdx(0); }).catch(() => {});
+    apiFetch('/api/market/meta').then(setMeta).catch(() => {});
+  }, [id]);
+
+  if (!listing) return <div className="text-white p-10 text-center">Lade Inserat...</div>;
+
+  const isOwner = user?.id === listing.user_id;
+  const catInfo = meta.categories.find(c => c.id === listing.category) || { name: listing.category, icon: '📦' };
+
+  const changeStatus = async (newStatus) => {
+    try {
+      await apiFetch(`/api/market/listings/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
+      setListing({ ...listing, status: newStatus });
+    } catch (e) { alert('Fehler'); }
+  };
+
+  const deleteListing = async () => {
+    if (!confirm('Inserat wirklich löschen?')) return;
+    try {
+      await apiFetch(`/api/market/listings/${id}`, { method: 'DELETE' });
+      navigate('/market');
+    } catch (e) { alert('Fehler'); }
+  };
+
+  const contactSeller = async () => {
+    try {
+      const conv = await apiFetch('/api/conversations', { method: 'POST', body: JSON.stringify({ user_id: listing.user_id }) });
+      navigate(`/messages/${conv.id}`);
+    } catch (e) { alert('Fehler'); }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <button onClick={() => navigate('/market')} className="text-gray-400 hover:text-white text-sm mb-4">← Zurück</button>
+
+      <div className="bg-dark-200 rounded-2xl border border-dark-100 overflow-hidden shadow-lg">
+        {/* Image carousel */}
+        <div className="aspect-square sm:aspect-video bg-dark-100 relative">
+          {listing.images.length > 0 ? (
+            <img src={getImageUrl(listing.images[imgIdx])} className="w-full h-full object-contain" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-7xl">{catInfo.icon}</div>
+          )}
+          <span className={`absolute top-3 right-3 text-sm font-bold text-white px-3 py-1.5 rounded ${MARKET_STATUS_COLORS[listing.status]}`}>{MARKET_STATUS_LABELS[listing.status]}</span>
+        </div>
+        {listing.images.length > 1 && (
+          <div className="flex gap-2 p-3 overflow-x-auto bg-dark-300">
+            {listing.images.map((img, i) => (
+              <button key={i} onClick={() => setImgIdx(i)} className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 ${i === imgIdx ? 'border-red-500' : 'border-transparent'}`}>
+                <img src={getImageUrl(img)} className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="p-4 sm:p-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">{listing.title}</h1>
+          <p className="text-3xl sm:text-4xl font-bold text-red-400 mb-4">{Number(listing.price).toFixed(2)} €</p>
+
+          <div className="flex flex-wrap gap-2 mb-4">
+            <span className="px-3 py-1 bg-dark-100 rounded-full text-xs text-gray-300 font-medium">{catInfo.icon} {catInfo.name}</span>
+            <span className="px-3 py-1 bg-dark-100 rounded-full text-xs text-gray-300 font-medium">🏷️ {listing.condition}</span>
+            {listing.size && <span className="px-3 py-1 bg-dark-100 rounded-full text-xs text-gray-300 font-medium">📏 {listing.size}</span>}
+          </div>
+
+          <p className="text-gray-300 whitespace-pre-wrap mb-6">{listing.description}</p>
+
+          <div className="flex items-center gap-3 mb-6 pb-6 border-b border-dark-100">
+            <Link to={`/profile/${listing.username}`} className="w-12 h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+              {listing.avatar ? <img src={getImageUrl(listing.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{listing.username[0].toUpperCase()}</span>}
+            </Link>
+            <div>
+              <Link to={`/profile/${listing.username}`} className="text-white font-bold hover:underline">{listing.display_name || listing.username}</Link>
+              <p className="text-gray-500 text-xs">@{listing.username} · {new Date(listing.created_at).toLocaleDateString('de-DE')}</p>
+            </div>
+          </div>
+
+          {isOwner ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {['active', 'reserved', 'sold'].map(s => (
+                  <button key={s} onClick={() => changeStatus(s)} disabled={listing.status === s}
+                    className={`px-4 py-2 rounded-xl text-sm font-bold transition ${listing.status === s ? MARKET_STATUS_COLORS[s] + ' text-white opacity-60' : 'bg-dark-100 text-gray-300 hover:bg-dark-300'}`}>
+                    {MARKET_STATUS_LABELS[s]}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => navigate(`/market/edit/${listing.id}`)} className="flex-1 bg-dark-100 hover:bg-dark-300 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition">✏️ Bearbeiten</button>
+                <button onClick={deleteListing} className="flex-1 bg-red-950 hover:bg-red-900 text-red-300 px-4 py-2.5 rounded-xl text-sm font-bold transition">🗑️ Löschen</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={contactSeller} disabled={listing.status === 'sold'} className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl font-bold transition disabled:opacity-50">
+              ✉️ Verkäufer kontaktieren
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarketEditPage() {
+  const { id } = useParams();
+  const isEdit = !!id;
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [meta, setMeta] = useState({ categories: [], conditions: [], statuses: [] });
+  const [form, setForm] = useState({ title: '', description: '', price: '', condition: 'Gebraucht', category: 'sneakers', size: '', status: 'active' });
+  const [files, setFiles] = useState([]);
+  const [existingImages, setExistingImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    apiFetch('/api/market/meta').then(setMeta).catch(() => {});
+    if (isEdit) {
+      apiFetch(`/api/market/listings/${id}`).then(l => {
+        setForm({ title: l.title, description: l.description, price: l.price, condition: l.condition, category: l.category, size: l.size || '', status: l.status });
+        setExistingImages(l.images.map((img, i) => ({ image: img, position: i })));
+      }).catch(() => {});
+    }
+  }, [id]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      files.forEach(f => fd.append('images', f));
+      if (isEdit) {
+        await apiFetch(`/api/market/listings/${id}`, { method: 'PUT', body: fd });
+        navigate(`/market/${id}`);
+      } else {
+        const res = await apiFetch('/api/market/listings', { method: 'POST', body: fd });
+        navigate(`/market/${res.id}`);
+      }
+    } catch (e) { alert('Fehler: ' + e.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <h1 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">{isEdit ? 'Inserat bearbeiten' : 'Neues Inserat'}</h1>
+      <form onSubmit={submit} className="bg-dark-200 rounded-2xl border border-dark-100 p-4 sm:p-6 space-y-4">
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Titel *</label>
+          <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Preis (€) *</label>
+            <input required type="number" step="0.01" min="0" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none" />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Größe</label>
+            <input value={form.size} onChange={e => setForm({ ...form, size: e.target.value })} placeholder="z.B. 42, M, One Size" className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Kategorie</label>
+            <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none">
+              {meta.categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Zustand</label>
+            <select value={form.condition} onChange={e => setForm({ ...form, condition: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none">
+              {meta.conditions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {isEdit && (
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Status</label>
+            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none">
+              <option value="active">Verfügbar</option>
+              <option value="reserved">Reserviert</option>
+              <option value="sold">Verkauft</option>
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Beschreibung *</label>
+          <textarea required rows="5" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none resize-none" />
+        </div>
+
+        {existingImages.length > 0 && (
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Vorhandene Bilder</label>
+            <div className="flex gap-2 flex-wrap">
+              {existingImages.map((img, i) => (
+                <div key={i} className="w-20 h-20 rounded-lg overflow-hidden border border-dark-100">
+                  <img src={getImageUrl(img.image)} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">{isEdit ? 'Weitere Bilder hinzufügen' : 'Bilder (max. 5)'}</label>
+          <input type="file" accept="image/*" multiple onChange={e => setFiles(Array.from(e.target.files).slice(0, 5))} className="w-full text-gray-400 text-sm" />
+          {files.length > 0 && <p className="text-gray-500 text-xs mt-1">{files.length} Datei(en) ausgewählt</p>}
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button type="button" onClick={() => navigate(-1)} className="flex-1 bg-dark-100 hover:bg-dark-300 text-white py-3 rounded-xl font-bold transition">Abbrechen</button>
+          <button type="submit" disabled={loading} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold transition disabled:opacity-50">
+            {loading ? 'Speichere...' : isEdit ? 'Speichern' : 'Inserat erstellen'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function ForumPage() {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -2676,6 +3005,10 @@ export default function App() {
                       <Route path="/forum" element={<ForumPage />} />
                       <Route path="/forum/new" element={<CreateForumTopicPage />} />
                       <Route path="/forum/:id" element={<ForumTopicPage />} />
+                      <Route path="/market" element={<MarketPage />} />
+                      <Route path="/market/new" element={<MarketEditPage />} />
+                      <Route path="/market/edit/:id" element={<MarketEditPage />} />
+                      <Route path="/market/:id" element={<MarketDetailPage />} />
                       <Route path="/saved" element={<SavedPostsPage />} />
                       <Route path="/admin" element={<AdminPage />} />
                     </Routes>

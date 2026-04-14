@@ -163,6 +163,28 @@ db.exec(`
     FOREIGN KEY (profile_id) REFERENCES users(id),
     FOREIGN KEY (viewer_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS listings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    price REAL NOT NULL,
+    currency TEXT DEFAULT 'EUR',
+    condition TEXT DEFAULT 'Gebraucht',
+    category TEXT DEFAULT 'sneakers',
+    size TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE TABLE IF NOT EXISTS listing_images (
+    id TEXT PRIMARY KEY,
+    listing_id TEXT NOT NULL,
+    image TEXT NOT NULL,
+    position INTEGER DEFAULT 0,
+    FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+  );
 `);
 
 // Automatisch Spalten bei alten Datenbanken nachrüsten
@@ -495,11 +517,13 @@ function buildUserExport(userId) {
   const gallery = db.prepare('SELECT id, image, created_at FROM profile_gallery WHERE user_id = ?').all(userId);
   const savedPosts = db.prepare('SELECT post_id, created_at FROM saved_posts WHERE user_id = ?').all(userId);
   const reports = db.prepare('SELECT id, content_type, content_id, reason, status, created_at FROM reports WHERE reporter_id = ?').all(userId);
+  const listings = db.prepare('SELECT id, title, description, price, currency, condition, category, size, status, created_at, updated_at FROM listings WHERE user_id = ?').all(userId);
   return {
     export_date: new Date().toISOString(),
     user, posts, comments, likes, reactions, follows, followers,
     forum_topics: topics, forum_replies: replies, messages_sent: messages,
     profile_gallery: gallery, saved_posts: savedPosts, reports_submitted: reports,
+    listings,
   };
 }
 
@@ -879,6 +903,138 @@ const FORUM_CATEGORIES = [
 
 app.get('/api/forum/categories', authenticateToken, (req, res) => {
   res.json(FORUM_CATEGORIES);
+});
+
+// --- MARKETPLACE ROUTES ---
+const MARKET_CATEGORIES = [
+  { id: 'sneakers', name: 'Sneakers', icon: '👟' },
+  { id: 'socks', name: 'Socken', icon: '🧦' },
+  { id: 'apparel', name: 'Kleidung', icon: '👕' },
+  { id: 'accessories', name: 'Accessoires', icon: '🎒' },
+  { id: 'other', name: 'Sonstiges', icon: '📦' },
+];
+const MARKET_CONDITIONS = ['Neu', 'Wie neu', 'Gebraucht', 'Stark gebraucht'];
+const MARKET_STATUSES = ['active', 'reserved', 'sold'];
+
+app.get('/api/market/meta', authenticateToken, (req, res) => {
+  res.json({ categories: MARKET_CATEGORIES, conditions: MARKET_CONDITIONS, statuses: MARKET_STATUSES });
+});
+
+const enrichListings = (rows) => {
+  if (rows.length === 0) return [];
+  const ids = rows.map(r => r.id);
+  const placeholders = ids.map(() => '?').join(',');
+  const images = db.prepare(`SELECT listing_id, image, position FROM listing_images WHERE listing_id IN (${placeholders}) ORDER BY position`).all(...ids);
+  const byListing = {};
+  images.forEach(i => { (byListing[i.listing_id] = byListing[i.listing_id] || []).push(i.image); });
+  return rows.map(r => ({ ...r, images: byListing[r.id] || [] }));
+};
+
+app.get('/api/market/listings', authenticateToken, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+  const category = req.query.category;
+  const status = req.query.status || 'active';
+  const where = ['l.status = ?'];
+  const params = [status];
+  if (category && category !== 'all') { where.push('l.category = ?'); params.push(category); }
+  const rows = db.prepare(`
+    SELECT l.*, u.username, u.display_name, u.avatar
+    FROM listings l JOIN users u ON l.user_id = u.id
+    WHERE ${where.join(' AND ')}
+    ORDER BY l.created_at DESC LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+  res.json(enrichListings(rows));
+});
+
+app.get('/api/market/listings/:id', authenticateToken, (req, res) => {
+  const row = db.prepare(`
+    SELECT l.*, u.username, u.display_name, u.avatar
+    FROM listings l JOIN users u ON l.user_id = u.id
+    WHERE l.id = ?
+  `).get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  res.json(enrichListings([row])[0]);
+});
+
+app.post('/api/market/listings', authenticateToken, upload.array('images', 5), async (req, res) => {
+  try {
+    const { title, description, price, condition, category, size } = req.body;
+    if (!title || !description || !price) return res.status(400).json({ error: 'Titel, Beschreibung und Preis sind pflicht' });
+    const priceNum = parseFloat(price);
+    if (isNaN(priceNum) || priceNum < 0) return res.status(400).json({ error: 'Ungültiger Preis' });
+    const id = uuidv4();
+    db.prepare('INSERT INTO listings (id, user_id, title, description, price, condition, category, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      id, req.user.id, title, description, priceNum,
+      MARKET_CONDITIONS.includes(condition) ? condition : 'Gebraucht',
+      MARKET_CATEGORIES.find(c => c.id === category) ? category : 'sneakers',
+      size || ''
+    );
+    if (req.files) {
+      for (let i = 0; i < req.files.length; i++) {
+        const imgPath = await saveFileLocally(req.files[i].buffer, req.files[i].originalname, false);
+        db.prepare('INSERT INTO listing_images (id, listing_id, image, position) VALUES (?, ?, ?, ?)').run(uuidv4(), id, imgPath, i);
+      }
+    }
+    res.json({ id });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Fehler beim Erstellen' }); }
+});
+
+app.put('/api/market/listings/:id', authenticateToken, upload.array('images', 5), async (req, res) => {
+  const listing = db.prepare('SELECT * FROM listings WHERE id = ?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'Not found' });
+  const isAdmin = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id)?.is_admin;
+  if (listing.user_id !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+  try {
+    const { title, description, price, condition, category, size, status } = req.body;
+    const priceNum = price !== undefined ? parseFloat(price) : listing.price;
+    db.prepare(`UPDATE listings SET title = ?, description = ?, price = ?, condition = ?, category = ?, size = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
+      title ?? listing.title,
+      description ?? listing.description,
+      priceNum,
+      MARKET_CONDITIONS.includes(condition) ? condition : listing.condition,
+      MARKET_CATEGORIES.find(c => c.id === category) ? category : listing.category,
+      size ?? listing.size,
+      MARKET_STATUSES.includes(status) ? status : listing.status,
+      req.params.id
+    );
+    if (req.files && req.files.length > 0) {
+      const existing = db.prepare('SELECT COUNT(*) as c FROM listing_images WHERE listing_id = ?').get(req.params.id).c;
+      for (let i = 0; i < req.files.length; i++) {
+        const imgPath = await saveFileLocally(req.files[i].buffer, req.files[i].originalname, false);
+        db.prepare('INSERT INTO listing_images (id, listing_id, image, position) VALUES (?, ?, ?, ?)').run(uuidv4(), req.params.id, imgPath, existing + i);
+      }
+    }
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Fehler' }); }
+});
+
+app.patch('/api/market/listings/:id/status', authenticateToken, (req, res) => {
+  const listing = db.prepare('SELECT user_id FROM listings WHERE id = ?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'Not found' });
+  if (listing.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  const { status } = req.body;
+  if (!MARKET_STATUSES.includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
+  db.prepare('UPDATE listings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/market/listings/:id', authenticateToken, (req, res) => {
+  const listing = db.prepare('SELECT user_id FROM listings WHERE id = ?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'Not found' });
+  const isAdmin = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id)?.is_admin;
+  if (listing.user_id !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+  db.prepare('DELETE FROM listing_images WHERE listing_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM listings WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/market/listings/:id/images/:imgId', authenticateToken, (req, res) => {
+  const listing = db.prepare('SELECT user_id FROM listings WHERE id = ?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'Not found' });
+  if (listing.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  db.prepare('DELETE FROM listing_images WHERE id = ? AND listing_id = ?').run(req.params.imgId, req.params.id);
+  res.json({ ok: true });
 });
 
 app.get('/api/forum/topics', authenticateToken, (req, res) => {

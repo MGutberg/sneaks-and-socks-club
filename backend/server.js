@@ -8,10 +8,40 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
 const sharp = require('sharp');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'sneaks-and-socks-club-secret-key-2024';
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+
+// --- MAILER ---
+let mailer = null;
+if (process.env.SMTP_HOST) {
+  mailer = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+  });
+  console.log('[mailer] SMTP configured:', process.env.SMTP_HOST);
+} else {
+  console.log('[mailer] No SMTP_HOST – emails will be logged to console only');
+}
+
+async function sendMail(to, subject, html) {
+  if (!mailer) {
+    console.log(`\n=== EMAIL (no SMTP) ===\nTo: ${to}\nSubject: ${subject}\n${html}\n=== END EMAIL ===\n`);
+    return;
+  }
+  try {
+    await mailer.sendMail({
+      from: process.env.SMTP_FROM || 'noreply@sneaks-and-socks-club.local',
+      to, subject, html,
+    });
+  } catch (e) { console.error('[mailer] send failed', e); }
+}
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'database.sqlite');
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 
@@ -160,6 +190,10 @@ try { db.exec("ALTER TABLE users ADD COLUMN orientation TEXT DEFAULT NULL;"); } 
 try { db.exec("ALTER TABLE users ADD COLUMN smoker TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE users ADD COLUMN languages TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE users ADD COLUMN relationship TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN verification_token TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN reset_expires DATETIME DEFAULT NULL;"); } catch (e) {}
 
 // --- NOTIFICATION HELPER ---
 const notify = (userId, type, actorId, contentId = null) => {
@@ -192,10 +226,69 @@ app.post('/api/auth/register', async (req, res) => {
     const { username, email, password, display_name } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
     const id = uuidv4();
-    db.prepare('INSERT INTO users (id, username, email, password, display_name) VALUES (?, ?, ?, ?, ?)').run(id, username, email, hashedPassword, display_name || username);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    db.prepare('INSERT INTO users (id, username, email, password, display_name, verification_token) VALUES (?, ?, ?, ?, ?, ?)').run(id, username, email, hashedPassword, display_name || username, verificationToken);
     const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id, username, email, display_name: display_name || username } });
-  } catch (error) { res.status(500).json({ error: 'Registration failed' }); }
+    const link = `${APP_URL}/verify-email?token=${verificationToken}`;
+    sendMail(email, 'Willkommen – E-Mail bestätigen',
+      `<p>Hallo ${display_name || username},</p>
+       <p>bitte bestätige deine E-Mail-Adresse für Sneaks & Socks Club:</p>
+       <p><a href="${link}">E-Mail bestätigen</a></p>
+       <p>Oder öffne diesen Link: ${link}</p>`);
+    res.json({ token, user: { id, username, email, display_name: display_name || username, email_verified: 0 } });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Registration failed' }); }
+});
+
+app.post('/api/auth/verify-email', (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+  const user = db.prepare('SELECT id FROM users WHERE verification_token = ?').get(token);
+  if (!user) return res.status(400).json({ error: 'Ungültiger oder abgelaufener Token' });
+  db.prepare('UPDATE users SET email_verified = 1, verification_token = NULL WHERE id = ?').run(user.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/resend-verification', authenticateToken, (req, res) => {
+  const user = db.prepare('SELECT id, email, username, display_name, email_verified FROM users WHERE id = ?').get(req.user.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.email_verified) return res.json({ ok: true, alreadyVerified: true });
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  db.prepare('UPDATE users SET verification_token = ? WHERE id = ?').run(verificationToken, user.id);
+  const link = `${APP_URL}/verify-email?token=${verificationToken}`;
+  sendMail(user.email, 'E-Mail bestätigen',
+    `<p>Hallo ${user.display_name || user.username},</p>
+     <p>hier ist dein neuer Bestätigungslink:</p>
+     <p><a href="${link}">E-Mail bestätigen</a></p>`);
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/forgot-password', (req, res) => {
+  const { email } = req.body;
+  const user = db.prepare('SELECT id, username, display_name FROM users WHERE email = ?').get(email);
+  // Respond ok either way, to avoid user enumeration
+  if (user) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    db.prepare('UPDATE users SET reset_token = ?, reset_expires = ? WHERE id = ?').run(token, expires, user.id);
+    const link = `${APP_URL}/reset-password?token=${token}`;
+    sendMail(email, 'Passwort zurücksetzen',
+      `<p>Hallo ${user.display_name || user.username},</p>
+       <p>du (oder jemand anderes) hat ein neues Passwort angefordert. Der Link ist 1 Stunde gültig:</p>
+       <p><a href="${link}">Passwort zurücksetzen</a></p>
+       <p>Falls du das nicht warst, ignoriere diese E-Mail.</p>`);
+  }
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password || password.length < 6) return res.status(400).json({ error: 'Ungültige Eingabe' });
+  const user = db.prepare('SELECT id, reset_expires FROM users WHERE reset_token = ?').get(token);
+  if (!user) return res.status(400).json({ error: 'Ungültiger Token' });
+  if (new Date(user.reset_expires) < new Date()) return res.status(400).json({ error: 'Token abgelaufen' });
+  const hashed = await bcrypt.hash(password, 10);
+  db.prepare('UPDATE users SET password = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?').run(hashed, user.id);
+  res.json({ ok: true });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -209,7 +302,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   db.prepare("UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = ?").run(req.user.id);
-  res.json(db.prepare('SELECT id, username, email, display_name, avatar, bio, location, website, is_admin FROM users WHERE id = ?').get(req.user.id));
+  res.json(db.prepare('SELECT id, username, email, display_name, avatar, bio, location, website, is_admin, email_verified FROM users WHERE id = ?').get(req.user.id));
 });
 
 // --- HEARTBEAT & ONLINE COUNTER ---

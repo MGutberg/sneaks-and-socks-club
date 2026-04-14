@@ -2142,6 +2142,125 @@ function SavedPostsPage() {
 }
 
 // --- AUTH PAGES ---
+function VerifyEmailBanner() {
+  const { user } = useAuth();
+  const apiFetch = useApi();
+  const [dismissed, setDismissed] = useState(false);
+  const [sent, setSent] = useState(false);
+  if (!user || user.email_verified || dismissed) return null;
+  const resend = async () => {
+    try { await apiFetch('/api/auth/resend-verification', { method: 'POST' }); setSent(true); }
+    catch { alert('Fehler beim Senden'); }
+  };
+  return (
+    <div className="bg-yellow-900/40 border-b border-yellow-800 text-yellow-200 text-sm px-4 py-2 flex items-center justify-between gap-3">
+      <span>📧 Bitte bestätige deine E-Mail-Adresse ({user.email}).</span>
+      <div className="flex gap-2 items-center">
+        {sent ? <span className="text-green-400">Gesendet ✓</span> : <button onClick={resend} className="underline hover:text-white">Erneut senden</button>}
+        <button onClick={() => setDismissed(true)} className="text-yellow-400 hover:text-white">✕</button>
+      </div>
+    </div>
+  );
+}
+
+// --- AUTH FLOW PAGES ---
+function AuthShell({ title, children }) {
+  return (
+    <div className="flex items-center justify-center min-h-screen px-4" style={{ backgroundImage: `url('/streetart.png')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+      <div className="bg-black/90 p-8 sm:p-10 rounded-3xl w-full max-w-md border border-dark-100 shadow-2xl backdrop-blur-sm">
+        <h2 className="text-white text-2xl font-bold mb-6 text-center">{title}</h2>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ForgotPasswordPage() {
+  const [email, setEmail] = useState('');
+  const [done, setDone] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault(); setLoading(true);
+    try {
+      await fetch(`${API_URL}/api/auth/forgot-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+      setDone(true);
+    } catch {}
+    finally { setLoading(false); }
+  };
+  return (
+    <AuthShell title="Passwort vergessen">
+      {done ? (
+        <div className="text-center">
+          <p className="text-gray-300 mb-4">Falls ein Account mit dieser E-Mail existiert, haben wir dir einen Link geschickt.</p>
+          <Link to="/login" className="text-red-500 hover:underline">Zurück zum Login</Link>
+        </div>
+      ) : (
+        <form onSubmit={submit}>
+          <p className="text-gray-400 text-sm mb-4">Gib deine E-Mail-Adresse ein, wir senden dir einen Reset-Link.</p>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="deine@mail.de" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500" />
+          <button disabled={loading} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold disabled:opacity-60">{loading ? 'Sende...' : 'Link anfordern'}</button>
+          <p className="text-center mt-4 text-sm"><Link to="/login" className="text-gray-500 hover:text-red-400">Zurück zum Login</Link></p>
+        </form>
+      )}
+    </AuthShell>
+  );
+}
+
+function ResetPasswordPage() {
+  const [params] = useSearchParams();
+  const token = params.get('token');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [status, setStatus] = useState(null);
+  const nav = useNavigate();
+  const submit = async (e) => {
+    e.preventDefault();
+    if (password.length < 6) return setStatus({ err: 'Mind. 6 Zeichen' });
+    if (password !== confirm) return setStatus({ err: 'Passwörter stimmen nicht überein' });
+    try {
+      const res = await fetch(`${API_URL}/api/auth/reset-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password }) });
+      const data = await res.json();
+      if (!res.ok) return setStatus({ err: data.error });
+      setStatus({ ok: true });
+      setTimeout(() => nav('/login'), 2000);
+    } catch { setStatus({ err: 'Fehler' }); }
+  };
+  if (!token) return <AuthShell title="Passwort zurücksetzen"><p className="text-gray-400 text-center">Kein Token gefunden.</p></AuthShell>;
+  return (
+    <AuthShell title="Neues Passwort setzen">
+      {status?.ok ? (
+        <p className="text-green-400 text-center">Passwort geändert. Du wirst weitergeleitet...</p>
+      ) : (
+        <form onSubmit={submit}>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="Neues Passwort" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500" />
+          <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required placeholder="Passwort bestätigen" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500" />
+          {status?.err && <p className="text-red-400 text-sm mb-4">{status.err}</p>}
+          <button className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold">Passwort speichern</button>
+        </form>
+      )}
+    </AuthShell>
+  );
+}
+
+function VerifyEmailPage() {
+  const [params] = useSearchParams();
+  const token = params.get('token');
+  const [status, setStatus] = useState('loading');
+  useEffect(() => {
+    if (!token) { setStatus('error'); return; }
+    fetch(`${API_URL}/api/auth/verify-email`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
+      .then(r => r.ok ? setStatus('ok') : setStatus('error'))
+      .catch(() => setStatus('error'));
+  }, [token]);
+  return (
+    <AuthShell title="E-Mail-Bestätigung">
+      {status === 'loading' && <p className="text-gray-400 text-center">Prüfe Token...</p>}
+      {status === 'ok' && <div className="text-center"><p className="text-green-400 mb-4">✅ E-Mail bestätigt!</p><Link to="/" className="text-red-500 hover:underline">Zur App</Link></div>}
+      {status === 'error' && <div className="text-center"><p className="text-red-400 mb-4">❌ Token ungültig oder abgelaufen.</p><Link to="/login" className="text-red-500 hover:underline">Zum Login</Link></div>}
+    </AuthShell>
+  );
+}
+
 function LoginPage() {
   const [u, setU] = useState(''), [p, setP] = useState(''), { login } = useAuth(), nav = useNavigate();
   const sub = async (e) => { e.preventDefault(); try { await login(u, p); nav('/'); } catch (err) { alert(err.message); } };
@@ -2164,7 +2283,8 @@ function LoginPage() {
             <input type="password" placeholder="••••••••" className="w-full p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500 transition placeholder-gray-600" onChange={e => setP(e.target.value)} required />
           </div>
           <button className="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white py-4 rounded-xl font-bold transition shadow-lg text-lg tracking-wide">Einloggen</button>
-          <p className="text-gray-500 text-sm mt-6 text-center">Neu im Club? <Link to="/register" className="text-red-500 font-bold hover:underline">Jetzt registrieren</Link></p>
+          <p className="text-gray-500 text-xs mt-4 text-center"><Link to="/forgot-password" className="hover:text-red-400 hover:underline">Passwort vergessen?</Link></p>
+          <p className="text-gray-500 text-sm mt-4 text-center">Neu im Club? <Link to="/register" className="text-red-500 font-bold hover:underline">Jetzt registrieren</Link></p>
         </form>
 
         {/* Logo Panel */}
@@ -2491,10 +2611,14 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/*" element={
               <ProtectedRoute>
                 <div className="flex flex-col min-h-screen">
                   <Navbar />
+                  <VerifyEmailBanner />
                   <main className="flex-1">
                     <Routes>
                       <Route path="/" element={<HomePage />} />

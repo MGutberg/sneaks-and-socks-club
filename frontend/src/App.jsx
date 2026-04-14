@@ -247,7 +247,7 @@ function Navbar() {
             </Link>
 
             {/* Profile - Desktop */}
-            <Link to={`/profile/${user.id}`} className="hidden sm:flex items-center hover:opacity-80 transition">
+            <Link to={`/profile/${user.username}`} className="hidden sm:flex items-center hover:opacity-80 transition">
               <div className="w-9 h-9 rounded-full bg-red-950 flex items-center justify-center overflow-hidden border border-dark-100">
                 {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-sm font-bold">{user.username[0].toUpperCase()}</span>}
               </div>
@@ -279,7 +279,7 @@ function Navbar() {
             <Link to="/create-post" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-red-600 text-white px-4 py-3 rounded-xl font-bold">
               <span>+</span> Post erstellen
             </Link>
-            <Link to={`/profile/${user.id}`} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
+            <Link to={`/profile/${user.username}`} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <div className="w-8 h-8 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
                 {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-sm font-bold">{user.username[0].toUpperCase()}</span>}
               </div>
@@ -453,13 +453,13 @@ function Post({ post, onRefresh }) {
     <div className="bg-dark-200 p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-dark-100 mb-4 sm:mb-6 shadow-md">
       <div className="flex justify-between items-start mb-2 sm:mb-3">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Link to={`/profile/${post.user_id}`} className="flex-shrink-0">
+          <Link to={`/profile/${post.username}`} className="flex-shrink-0">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden shadow-inner">
               {post.avatar ? <img src={getImageUrl(post.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-sm sm:text-base">{post.username[0].toUpperCase()}</span>}
             </div>
           </Link>
           <div className="min-w-0">
-            <Link to={`/profile/${post.user_id}`} className="text-white font-bold hover:text-red-400 transition text-sm sm:text-base truncate block">{post.display_name || post.username}</Link>
+            <Link to={`/profile/${post.username}`} className="text-white font-bold hover:text-red-400 transition text-sm sm:text-base truncate block">{post.display_name || post.username}</Link>
             <p className="text-gray-500 text-xs">@{post.username}</p>
           </div>
         </div>
@@ -657,7 +657,7 @@ function SearchPage() {
               <h2 className="text-lg font-bold text-white mb-4">Benutzer ({results.users.length})</h2>
               <div className="space-y-3">
                 {results.users.map(user => (
-                  <Link key={user.id} to={`/profile/${user.id}`} className="flex items-center gap-4 bg-dark-200 p-4 rounded-xl border border-dark-100 hover:border-red-500 transition">
+                  <Link key={user.id} to={`/profile/${user.username}`} className="flex items-center gap-4 bg-dark-200 p-4 rounded-xl border border-dark-100 hover:border-red-500 transition">
                     <div className="w-12 h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
                       {user.avatar ? <img src={getImageUrl(user.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{user.username[0].toUpperCase()}</span>}
                     </div>
@@ -1067,7 +1067,7 @@ function ProfilePage() {
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-3">
               {visitors.map(v => (
-                <a key={v.id} href={`/profile/${v.id}`} className="flex flex-col items-center gap-1.5 group" title={v.display_name || v.username}>
+                <a key={v.id} href={`/profile/${v.username}`} className="flex flex-col items-center gap-1.5 group" title={v.display_name || v.username}>
                   <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-dark-100 group-hover:border-red-500 transition">
                     {v.avatar
                       ? <img src={getImageUrl(v.avatar)} className="w-full h-full object-cover" />
@@ -1099,7 +1099,7 @@ function ProfilePage() {
               ) : (
                 <div className="space-y-3">
                   {followersList.map(u => (
-                    <Link key={u.id} to={`/profile/${u.id}`} onClick={() => setShowFollowersModal(false)} className="flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition">
+                    <Link key={u.id} to={`/profile/${u.username}`} onClick={() => setShowFollowersModal(false)} className="flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition">
                       <div className="w-10 h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
                         {u.avatar ? <img src={getImageUrl(u.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{u.username[0].toUpperCase()}</span>}
                       </div>
@@ -1130,7 +1130,7 @@ function ProfilePage() {
               ) : (
                 <div className="space-y-3">
                   {followingList.map(u => (
-                    <Link key={u.id} to={`/profile/${u.id}`} onClick={() => setShowFollowingModal(false)} className="flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition">
+                    <Link key={u.id} to={`/profile/${u.username}`} onClick={() => setShowFollowingModal(false)} className="flex items-center gap-3 p-3 bg-dark-100 rounded-xl hover:bg-dark-300 transition">
                       <div className="w-10 h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
                         {u.avatar ? <img src={getImageUrl(u.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{u.username[0].toUpperCase()}</span>}
                       </div>
@@ -1511,7 +1511,7 @@ function ConversationPage() {
     <div className="max-w-2xl mx-auto p-2 sm:p-4 flex flex-col" style={{ height: 'calc(100dvh - 56px)' }}>
       {/* Header */}
       <div className="flex items-center gap-2 sm:gap-4 bg-dark-200 p-3 sm:p-4 rounded-xl border border-dark-100 mb-2 sm:mb-4 flex-shrink-0">
-        <Link to={`/profile/${otherUser.id}`} className="flex items-center gap-2 sm:gap-4 flex-1 hover:opacity-80 transition min-w-0">
+        <Link to={`/profile/${otherUser.username}`} className="flex items-center gap-2 sm:gap-4 flex-1 hover:opacity-80 transition min-w-0">
           <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden flex-shrink-0">
             {otherUser.avatar ? <img src={getImageUrl(otherUser.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-sm sm:text-base">{otherUser.username[0].toUpperCase()}</span>}
           </div>
@@ -1753,13 +1753,13 @@ function ForumTopicPage() {
       <div className="bg-dark-200 p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-dark-100 mb-4 sm:mb-6">
         <div className="flex justify-between items-start gap-3 mb-3 sm:mb-4">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <Link to={`/profile/${topic.user_id}`} className="flex-shrink-0">
+            <Link to={`/profile/${topic.username}`} className="flex-shrink-0">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
                 {topic.avatar ? <img src={getImageUrl(topic.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{topic.username[0].toUpperCase()}</span>}
               </div>
             </Link>
             <div className="min-w-0">
-              <Link to={`/profile/${topic.user_id}`} className="text-white font-bold hover:text-red-400 transition text-sm sm:text-base">{topic.display_name || topic.username}</Link>
+              <Link to={`/profile/${topic.username}`} className="text-white font-bold hover:text-red-400 transition text-sm sm:text-base">{topic.display_name || topic.username}</Link>
               <p className="text-gray-500 text-xs">@{topic.username} · {new Date(topic.created_at).toLocaleDateString('de-DE')}</p>
             </div>
           </div>
@@ -1799,13 +1799,13 @@ function ForumTopicPage() {
           <div key={reply.id} className="bg-dark-200 p-3 sm:p-4 rounded-xl border border-dark-100">
             <div className="flex justify-between items-start gap-2 mb-2">
               <div className="flex items-center gap-2 min-w-0">
-                <Link to={`/profile/${reply.user_id}`} className="flex-shrink-0">
+                <Link to={`/profile/${reply.username}`} className="flex-shrink-0">
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
                     {reply.avatar ? <img src={getImageUrl(reply.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold text-xs sm:text-sm">{reply.username[0].toUpperCase()}</span>}
                   </div>
                 </Link>
                 <div className="min-w-0">
-                  <Link to={`/profile/${reply.user_id}`} className="text-white font-bold hover:text-red-400 transition text-sm">{reply.display_name || reply.username}</Link>
+                  <Link to={`/profile/${reply.username}`} className="text-white font-bold hover:text-red-400 transition text-sm">{reply.display_name || reply.username}</Link>
                   <p className="text-gray-500 text-xs">{new Date(reply.created_at).toLocaleDateString('de-DE')}</p>
                 </div>
               </div>
@@ -1982,7 +1982,7 @@ function MembersPage() {
       <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-8 pl-1">Alle Mitglieder</h2>
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5">
         {members.map(m => (
-          <Link key={m.id} to={`/profile/${m.id}`}>
+          <Link key={m.id} to={`/profile/${m.username}`}>
             <div className="bg-dark-200 border border-dark-100 p-3 sm:p-5 rounded-xl sm:rounded-2xl hover:border-red-500 active:scale-95 sm:hover:-translate-y-1 transition duration-200 shadow-md">
               <div className="flex flex-col items-center text-center gap-2 sm:gap-3">
                 <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-red-950 flex items-center justify-center overflow-hidden border-2 sm:border-4 border-dark-100 shadow-sm relative">

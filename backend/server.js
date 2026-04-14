@@ -108,6 +108,13 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (actor_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS profile_gallery (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    image TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
 
 // Automatisch Spalten bei alten Datenbanken nachrüsten
@@ -124,6 +131,18 @@ try {
 try {
   db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;");
 } catch (e) { /* Spalte existiert bereits */ }
+
+// Erweiterte Profil-Spalten nachrüsten
+try { db.exec("ALTER TABLE users ADD COLUMN age TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN height TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN weight TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN body_type TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN look_type TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN body_hair TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN orientation TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN smoker TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN languages TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN relationship TEXT DEFAULT NULL;"); } catch (e) {}
 
 // --- NOTIFICATION HELPER ---
 const notify = (userId, type, actorId, contentId = null) => {
@@ -223,7 +242,7 @@ app.get('/api/users/by-username/:username', authenticateToken, (req, res) => {
 });
 
 app.get('/api/users/:id', authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, avatar, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands FROM users WHERE id = ?').get(req.params.id);
+  const user = db.prepare('SELECT id, username, display_name, avatar, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, age, height, weight, body_type, look_type, body_hair, orientation, smoker, languages, relationship FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const followerCount = db.prepare('SELECT COUNT(*) as count FROM follows WHERE following_id = ?').get(req.params.id).count;
   const followingCount = db.prepare('SELECT COUNT(*) as count FROM follows WHERE follower_id = ?').get(req.params.id).count;
@@ -266,11 +285,34 @@ app.get('/api/users/:id/following', authenticateToken, (req, res) => {
 
 app.put('/api/users/:id', authenticateToken, upload.single('avatar'), async (req, res) => {
   if (req.user.id !== req.params.id) return res.status(403).json({ error: 'Unauthorized' });
-  const { display_name, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands } = req.body;
+  const { display_name, bio, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, age, height, weight, body_type, look_type, body_hair, orientation, smoker, languages, relationship } = req.body;
   let avatar = req.file ? await saveFileLocally(req.file.buffer, req.file.originalname, true) : null;
-  db.prepare(`UPDATE users SET display_name=COALESCE(?,display_name), bio=COALESCE(?,bio), avatar=COALESCE(?,avatar), location=COALESCE(?,location), website=COALESCE(?,website), favorite_sneakers=COALESCE(?,favorite_sneakers), favorite_socks=COALESCE(?,favorite_socks), sneaker_size=COALESCE(?,sneaker_size), sock_size=COALESCE(?,sock_size), favorite_brands=COALESCE(?,favorite_brands) WHERE id=?`)
-    .run(display_name||null, bio||null, avatar||null, location||null, website||null, favorite_sneakers||null, favorite_socks||null, sneaker_size||null, sock_size||null, favorite_brands||null, req.params.id);
-  res.json(db.prepare('SELECT id, username, display_name, avatar, bio, location, website FROM users WHERE id = ?').get(req.params.id));
+  db.prepare(`UPDATE users SET display_name=COALESCE(?,display_name), bio=COALESCE(?,bio), avatar=COALESCE(?,avatar), location=COALESCE(?,location), website=COALESCE(?,website), favorite_sneakers=COALESCE(?,favorite_sneakers), favorite_socks=COALESCE(?,favorite_socks), sneaker_size=COALESCE(?,sneaker_size), sock_size=COALESCE(?,sock_size), favorite_brands=COALESCE(?,favorite_brands), age=?, height=?, weight=?, body_type=?, look_type=?, body_hair=?, orientation=?, smoker=?, languages=?, relationship=? WHERE id=?`)
+    .run(display_name||null, bio||null, avatar||null, location||null, website||null, favorite_sneakers||null, favorite_socks||null, sneaker_size||null, sock_size||null, favorite_brands||null, age||null, height||null, weight||null, body_type||null, look_type||null, body_hair||null, orientation||null, smoker||null, languages||null, relationship||null, req.params.id);
+  res.json(db.prepare('SELECT id, username, display_name, avatar, bio, location, website, age, height, weight, body_type, look_type, body_hair, orientation, smoker, languages, relationship FROM users WHERE id = ?').get(req.params.id));
+});
+
+// --- PROFILE GALLERY ROUTES ---
+app.get('/api/users/:id/gallery', authenticateToken, (req, res) => {
+  const images = db.prepare('SELECT id, image, created_at FROM profile_gallery WHERE user_id = ? ORDER BY created_at ASC').all(req.params.id);
+  res.json(images);
+});
+
+app.post('/api/profile/gallery', authenticateToken, upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Kein Bild angegeben' });
+  const count = db.prepare('SELECT COUNT(*) as c FROM profile_gallery WHERE user_id = ?').get(req.user.id).c;
+  if (count >= 18) return res.status(400).json({ error: 'Maximal 18 Bilder erlaubt' });
+  const imagePath = await saveFileLocally(req.file.buffer, req.file.originalname);
+  const id = uuidv4();
+  db.prepare('INSERT INTO profile_gallery (id, user_id, image) VALUES (?, ?, ?)').run(id, req.user.id, imagePath);
+  res.json({ id, image: imagePath });
+});
+
+app.delete('/api/profile/gallery/:id', authenticateToken, (req, res) => {
+  const item = db.prepare('SELECT * FROM profile_gallery WHERE id = ?').get(req.params.id);
+  if (!item || item.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  db.prepare('DELETE FROM profile_gallery WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
 });
 
 // --- POST ROUTES ---

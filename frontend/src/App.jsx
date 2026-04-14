@@ -695,12 +695,27 @@ function HomePage() {
 }
 
 // --- PROFILE PAGE ---
+const PROFILE_OPTS = {
+  age: ['18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45','46','47','48','49','50','51','52','53','54','55','56','57','58','59','60','61','62','63','64','65+'],
+  height: ['150','155','160','165','170','175','180','185','190','195','200','205','210+'],
+  weight: ['45–55','55–65','65–75','75–85','85–95','95–105','105–115','115+'],
+  body_type: ['Schlank','Normal','Sportlich','Muskulös','Kräftig','Mollig'],
+  look_type: ['Bär','Twink','Otter','Daddy','Jock','Cub','Normal','Anderes'],
+  body_hair: ['Glatt','Wenig','Mittel','Behaart','Sehr behaart'],
+  orientation: ['Gay','Bisexuell','Hetero','Lesbisch','Queer','Pansexuell','Asexuell'],
+  smoker: ['Nein','Gelegentlich','Ja'],
+  relationship: ['Single','In Beziehung','Offen','Verheiratet','Getrennt'],
+};
+const ALL_LANGUAGES = ['Deutsch','Englisch','Spanisch','Französisch','Italienisch','Türkisch','Arabisch','Russisch','Polnisch','Niederländisch','Portugiesisch','Japanisch','Chinesisch'];
+
 function ProfilePage() {
   const { id } = useParams();
   const { user: currentUser, updateUser } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [gallery, setGallery] = useState([]);
+  const [lightbox, setLightbox] = useState(null);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [editAvatar, setEditAvatar] = useState(null);
@@ -712,6 +727,7 @@ function ProfilePage() {
   const [followersList, setFollowersList] = useState([]);
   const [followingList, setFollowingList] = useState([]);
   const [externalLinkModal, setExternalLinkModal] = useState(null);
+  const galleryInputRef = useRef(null);
   const apiFetch = useApi();
 
   const isOwnProfile = currentUser?.id === id;
@@ -721,17 +737,45 @@ function ProfilePage() {
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       const resolvedId = isUUID ? id : (await apiFetch(`/api/users/by-username/${id}`)).id;
       if (!resolvedId) return;
-      const [pData, pPosts] = await Promise.all([
+      const [pData, pPosts, pGallery] = await Promise.all([
         apiFetch(`/api/users/${resolvedId}`),
-        apiFetch(`/api/users/${resolvedId}/posts`)
+        apiFetch(`/api/users/${resolvedId}/posts`),
+        apiFetch(`/api/users/${resolvedId}/gallery`),
       ]);
       setProfile(pData);
       setPosts(pPosts);
+      setGallery(pGallery);
       setEditForm(pData);
       setIsFollowing(pData.is_following || false);
       setFollowerCount(pData.follower_count || 0);
       setFollowingCount(pData.following_count || 0);
     } catch(e) { console.error(e) }
+  };
+
+  const toggleLanguage = (lang) => {
+    const current = (editForm.languages || '').split(',').filter(Boolean);
+    const idx = current.indexOf(lang);
+    if (idx >= 0) current.splice(idx, 1); else current.push(lang);
+    setEditForm({ ...editForm, languages: current.join(',') });
+  };
+
+  const handleGalleryUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('image', file);
+    try {
+      const item = await apiFetch('/api/profile/gallery', { method: 'POST', body: fd });
+      setGallery(prev => [...prev, item]);
+    } catch (err) { alert(err.message); }
+    e.target.value = '';
+  };
+
+  const handleGalleryDelete = async (itemId) => {
+    try {
+      await apiFetch(`/api/profile/gallery/${itemId}`, { method: 'DELETE' });
+      setGallery(prev => prev.filter(g => g.id !== itemId));
+    } catch (err) { alert(err.message); }
   };
 
   useEffect(() => { loadData() }, [id]);
@@ -771,7 +815,7 @@ function ProfilePage() {
     e.preventDefault();
     try {
       const fd = new FormData();
-      const fields = ['display_name', 'bio', 'location', 'website', 'favorite_sneakers', 'favorite_socks', 'sneaker_size', 'sock_size', 'favorite_brands'];
+      const fields = ['display_name', 'bio', 'location', 'website', 'favorite_sneakers', 'favorite_socks', 'sneaker_size', 'sock_size', 'favorite_brands', 'age', 'height', 'weight', 'body_type', 'look_type', 'body_hair', 'orientation', 'smoker', 'languages', 'relationship'];
       fields.forEach(k => { if (editForm[k] !== null && editForm[k] !== undefined) fd.append(k, editForm[k]); });
       if (editAvatar) fd.append('avatar', editAvatar);
       
@@ -816,6 +860,31 @@ function ProfilePage() {
                 {profile.favorite_sneakers && <span className="px-4 py-1.5 bg-dark-100 border border-dark-100 rounded-full text-xs font-bold text-gray-300">👟 {profile.favorite_sneakers}</span>}
                 {profile.sneaker_size && <span className="px-4 py-1.5 bg-dark-100 border border-dark-100 rounded-full text-xs font-bold text-gray-300">📏 {profile.sneaker_size}</span>}
                 {profile.favorite_brands && <span className="px-4 py-1.5 bg-dark-100 border border-dark-100 rounded-full text-xs font-bold text-gray-300">🏷️ {profile.favorite_brands}</span>}
+              </div>
+            )}
+
+            {(profile.age || profile.height || profile.weight || profile.body_type || profile.look_type || profile.body_hair || profile.orientation || profile.smoker || profile.languages || profile.relationship) && (
+              <div className="mt-5 bg-dark-100 rounded-xl p-4 border border-dark-300">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Persönliche Angaben</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  {profile.age && <div className="flex justify-between"><span className="text-gray-500">Alter</span><span className="text-white font-medium">{profile.age}</span></div>}
+                  {profile.height && <div className="flex justify-between"><span className="text-gray-500">Größe</span><span className="text-white font-medium">{profile.height} cm</span></div>}
+                  {profile.weight && <div className="flex justify-between"><span className="text-gray-500">Gewicht</span><span className="text-white font-medium">{profile.weight} kg</span></div>}
+                  {profile.body_type && <div className="flex justify-between"><span className="text-gray-500">Statur</span><span className="text-white font-medium">{profile.body_type}</span></div>}
+                  {profile.look_type && <div className="flex justify-between"><span className="text-gray-500">Typ</span><span className="text-white font-medium">{profile.look_type}</span></div>}
+                  {profile.body_hair && <div className="flex justify-between"><span className="text-gray-500">Körperbehaarung</span><span className="text-white font-medium">{profile.body_hair}</span></div>}
+                  {profile.orientation && <div className="flex justify-between"><span className="text-gray-500">Ich bin</span><span className="text-white font-medium">{profile.orientation}</span></div>}
+                  {profile.smoker && <div className="flex justify-between"><span className="text-gray-500">Raucher</span><span className="text-white font-medium">{profile.smoker}</span></div>}
+                  {profile.relationship && <div className="flex justify-between"><span className="text-gray-500">Beziehung</span><span className="text-white font-medium">{profile.relationship}</span></div>}
+                  {profile.languages && (
+                    <div className="col-span-2 flex flex-wrap gap-1.5 mt-1">
+                      <span className="text-gray-500 text-sm mr-1">Sprachen</span>
+                      {profile.languages.split(',').filter(Boolean).map(l => (
+                        <span key={l} className="px-2 py-0.5 bg-dark-300 rounded-full text-xs text-gray-300 font-medium">{l}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -878,6 +947,45 @@ function ProfilePage() {
                 </div>
               </div>
             </div>
+            {/* Persönliche Angaben */}
+            <div className="mt-6 pt-6 border-t border-dark-300">
+              <h4 className="text-xs font-bold text-gray-400 mb-4 uppercase tracking-wider">Persönliche Angaben</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { key: 'age', label: 'Alter', suffix: 'Jahre' },
+                  { key: 'height', label: 'Größe', suffix: 'cm' },
+                  { key: 'weight', label: 'Gewicht', suffix: 'kg' },
+                  { key: 'body_type', label: 'Statur', suffix: '' },
+                  { key: 'look_type', label: 'Typ', suffix: '' },
+                  { key: 'body_hair', label: 'Körperbehaarung', suffix: '' },
+                  { key: 'orientation', label: 'Ich bin', suffix: '' },
+                  { key: 'smoker', label: 'Raucher', suffix: '' },
+                  { key: 'relationship', label: 'Beziehung', suffix: '' },
+                ].map(({ key, label, suffix }) => (
+                  <div key={key}>
+                    <label className="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">{label}</label>
+                    <select value={editForm[key] || ''} onChange={e => setEditForm({ ...editForm, [key]: e.target.value })} className="w-full bg-dark-100 border border-dark-100 rounded-xl p-3 text-white focus:border-red-500 outline-none">
+                      <option value="">– keine Angabe –</option>
+                      {PROFILE_OPTS[key].map(v => <option key={v} value={v}>{v}{suffix ? ` ${suffix}` : ''}</option>)}
+                    </select>
+                  </div>
+                ))}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">Sprachen</label>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_LANGUAGES.map(lang => {
+                      const selected = (editForm.languages || '').split(',').filter(Boolean).includes(lang);
+                      return (
+                        <button key={lang} type="button" onClick={() => toggleLanguage(lang)} className={`px-3 py-1.5 rounded-full text-xs font-bold transition ${selected ? 'bg-red-600 text-white' : 'bg-dark-100 text-gray-400 hover:text-white'}`}>
+                          {lang}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-3 mt-8">
               {/* ÄNDERUNG: Blau-Button zu Rot-Button gewechselt */}
               <button type="submit" className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-bold transition shadow-md">Speichern</button>
@@ -886,6 +994,43 @@ function ProfilePage() {
           </form>
         )}
       </div>
+
+      {/* Profil-Galerie */}
+      {(gallery.length > 0 || isOwnProfile) && (
+        <div className="bg-dark-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-dark-100 mb-4 sm:mb-8 shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">Galerie</h2>
+            {isOwnProfile && (
+              <>
+                <button onClick={() => galleryInputRef.current?.click()} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-xl font-bold transition">+ Bild hinzufügen</button>
+                <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={handleGalleryUpload} />
+              </>
+            )}
+          </div>
+          {gallery.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-6">Noch keine Bilder in der Galerie.</p>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {gallery.map(item => (
+                <div key={item.id} className="relative group aspect-square overflow-hidden rounded-xl bg-dark-100 cursor-pointer" onClick={() => setLightbox(item.image)}>
+                  <img src={getImageUrl(item.image)} className="w-full h-full object-cover transition group-hover:scale-105" />
+                  {isOwnProfile && (
+                    <button onClick={e => { e.stopPropagation(); handleGalleryDelete(item.id); }} className="absolute top-1.5 right-1.5 w-7 h-7 bg-black/70 hover:bg-red-600 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center">×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" onClick={() => setLightbox(null)}>
+          <button className="absolute top-4 right-4 text-white text-3xl font-bold hover:text-red-400 transition">×</button>
+          <img src={getImageUrl(lightbox)} className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
 
       <h2 className="text-2xl font-bold text-white mb-6 pl-2">Posts von {profile.display_name || profile.username}</h2>
       {posts.length === 0 ? <div className="text-center bg-dark-200 p-8 rounded-2xl border border-dark-100"><p className="text-gray-400 font-medium">Keine Posts vorhanden.</p></div> : posts.map(p => <Post key={p.id} post={p} onRefresh={loadData} />)}

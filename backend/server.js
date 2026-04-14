@@ -115,6 +115,15 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS saved_posts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    post_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, post_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (post_id) REFERENCES posts(id)
+  );
 `);
 
 // Automatisch Spalten bei alten Datenbanken nachrüsten
@@ -249,7 +258,17 @@ app.get('/api/users/:id', authenticateToken, (req, res) => {
   const isFollowing = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(req.user.id, req.params.id) ? true : false;
   res.json({ ...user, follower_count: followerCount, following_count: followingCount, is_following: isFollowing });
 });
-app.get('/api/users/:id/posts', authenticateToken, (req, res) => res.json(db.prepare('SELECT p.*, u.username, u.display_name, u.avatar FROM posts p JOIN users u ON p.user_id = u.id WHERE p.user_id = ? ORDER BY p.created_at DESC').all(req.params.id)));
+app.get('/api/users/:id/posts', authenticateToken, (req, res) => {
+  const posts = db.prepare(`
+    SELECT p.*, u.username, u.display_name, u.avatar,
+    (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+    (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count,
+    (SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as liked,
+    (SELECT 1 FROM saved_posts WHERE post_id = p.id AND user_id = ?) as saved
+    FROM posts p JOIN users u ON p.user_id = u.id WHERE p.user_id = ? ORDER BY p.created_at DESC
+  `).all(req.user.id, req.user.id, req.params.id);
+  res.json(posts);
+});
 
 // --- FOLLOWER ROUTES ---
 app.post('/api/users/:id/follow', authenticateToken, (req, res) => {
@@ -322,10 +341,11 @@ app.get('/api/posts', authenticateToken, (req, res) => {
     (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
     (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count,
     (SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as liked,
+    (SELECT 1 FROM saved_posts WHERE post_id = p.id AND user_id = ?) as saved,
     (SELECT json_group_object(emoji, c) FROM (SELECT emoji, COUNT(*) as c FROM reactions WHERE post_id = p.id GROUP BY emoji)) as reactions_json,
     (SELECT json_group_array(emoji) FROM reactions WHERE post_id = p.id AND user_id = ?) as my_reactions_json
     FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC
-  `).all(req.user.id, req.user.id);
+  `).all(req.user.id, req.user.id, req.user.id);
   res.json(posts.map(p => ({
     ...p,
     reactions: p.reactions_json ? JSON.parse(p.reactions_json) : {},
@@ -333,6 +353,40 @@ app.get('/api/posts', authenticateToken, (req, res) => {
     reactions_json: undefined,
     my_reactions_json: undefined
   })));
+});
+
+app.get('/api/posts/saved', authenticateToken, (req, res) => {
+  const posts = db.prepare(`
+    SELECT p.*, u.username, u.display_name, u.avatar,
+    (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+    (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count,
+    (SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as liked,
+    1 as saved,
+    (SELECT json_group_object(emoji, c) FROM (SELECT emoji, COUNT(*) as c FROM reactions WHERE post_id = p.id GROUP BY emoji)) as reactions_json,
+    (SELECT json_group_array(emoji) FROM reactions WHERE post_id = p.id AND user_id = ?) as my_reactions_json
+    FROM posts p
+    JOIN users u ON p.user_id = u.id
+    JOIN saved_posts sp ON sp.post_id = p.id AND sp.user_id = ?
+    ORDER BY sp.created_at DESC
+  `).all(req.user.id, req.user.id, req.user.id);
+  res.json(posts.map(p => ({
+    ...p,
+    reactions: p.reactions_json ? JSON.parse(p.reactions_json) : {},
+    my_reactions: p.my_reactions_json ? JSON.parse(p.my_reactions_json) : [],
+    reactions_json: undefined,
+    my_reactions_json: undefined
+  })));
+});
+
+app.post('/api/posts/:id/save', authenticateToken, (req, res) => {
+  const existing = db.prepare('SELECT id FROM saved_posts WHERE post_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (existing) {
+    db.prepare('DELETE FROM saved_posts WHERE id = ?').run(existing.id);
+    res.json({ saved: false });
+  } else {
+    db.prepare('INSERT INTO saved_posts (id, post_id, user_id) VALUES (?, ?, ?)').run(uuidv4(), req.params.id, req.user.id);
+    res.json({ saved: true });
+  }
 });
 
 // NEUE ROUTE: API für die Gimmick-Galerie

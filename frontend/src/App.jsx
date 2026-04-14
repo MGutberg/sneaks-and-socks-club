@@ -226,6 +226,11 @@ function Navbar() {
               )}
             </div>
 
+            {/* Saved Posts Icon */}
+            <Link to="/saved" className="text-gray-400 hover:text-yellow-400 transition p-2" title="Gespeicherte Posts">
+              <span className="text-xl">🔖</span>
+            </Link>
+
             {/* Messages Icon */}
             <Link to="/messages" className="relative text-gray-400 hover:text-white transition p-2" title="Nachrichten">
               <span className="text-xl">✉️</span>
@@ -285,6 +290,9 @@ function Navbar() {
             </Link>
             <Link to="/forum" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>💬</span> Forum
+            </Link>
+            <Link to="/saved" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
+              <span>🔖</span> Gespeicherte Posts
             </Link>
             {user?.is_admin && (
               <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-yellow-900/40 text-yellow-400 px-4 py-3 rounded-xl font-bold border border-yellow-800">
@@ -377,6 +385,7 @@ function Post({ post, onRefresh }) {
   const { user } = useAuth(); const apiFetch = useApi();
   const [liked, setLiked] = useState(!!post.liked);
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
+  const [saved, setSaved] = useState(!!post.saved);
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
@@ -402,6 +411,13 @@ function Post({ post, onRefresh }) {
       const res = await apiFetch(`/api/posts/${post.id}/like`, { method: 'POST' });
       setLiked(!!res.liked);
       setLikeCount(prev => res.liked ? prev + 1 : prev - 1);
+    } catch (err) { console.error(err); }
+  }
+
+  const handleSave = async () => {
+    try {
+      const res = await apiFetch(`/api/posts/${post.id}/save`, { method: 'POST' });
+      setSaved(!!res.saved);
     } catch (err) { console.error(err); }
   }
 
@@ -476,6 +492,11 @@ function Post({ post, onRefresh }) {
         <button onClick={() => { setShowComments(!showComments); if (!showComments) loadComments(); }} className="flex items-center gap-2 text-gray-400 hover:text-red-400 transition">
           <span>💬</span>
           <span className="text-sm font-medium">{post.comment_count || 0}</span>
+        </button>
+        <button onClick={handleSave} title={saved ? 'Gespeichert – klicken zum Entfernen' : 'Speichern'}
+          className={`ml-auto flex items-center gap-1.5 text-sm transition ${saved ? 'text-yellow-400 hover:text-yellow-500' : 'text-gray-500 hover:text-yellow-400'}`}>
+          <span>{saved ? '🔖' : '🏷️'}</span>
+          <span className="hidden sm:inline font-medium">{saved ? 'Gespeichert' : 'Speichern'}</span>
         </button>
       </div>
 
@@ -1952,6 +1973,43 @@ function MembersPage() {
   )
 }
 
+// --- SAVED POSTS PAGE ---
+function SavedPostsPage() {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const apiFetch = useApi();
+
+  const loadSaved = async () => {
+    try {
+      const data = await apiFetch('/api/posts/saved');
+      setPosts(data);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadSaved(); }, []);
+
+  return (
+    <div className="max-w-2xl mx-auto p-3 sm:p-4 py-4 sm:py-8">
+      <div className="flex items-center gap-3 mb-6">
+        <span className="text-3xl">🔖</span>
+        <h1 className="text-2xl font-bold text-white">Gespeicherte Posts</h1>
+      </div>
+      {loading ? (
+        <p className="text-gray-400 text-center py-12">Lädt...</p>
+      ) : posts.length === 0 ? (
+        <div className="text-center bg-dark-200 p-10 rounded-2xl border border-dark-100">
+          <p className="text-4xl mb-3">🏷️</p>
+          <p className="text-white font-bold text-lg mb-1">Noch nichts gespeichert</p>
+          <p className="text-gray-500 text-sm">Klicke auf 🏷️ unter einem Post, um ihn zu speichern.</p>
+        </div>
+      ) : (
+        posts.map(p => <Post key={p.id} post={p} onRefresh={loadSaved} />)
+      )}
+    </div>
+  );
+}
+
 // --- AUTH PAGES ---
 function LoginPage() {
   const [u, setU] = useState(''), [p, setP] = useState(''), { login } = useAuth(), nav = useNavigate();
@@ -2318,6 +2376,7 @@ export default function App() {
                       <Route path="/forum" element={<ForumPage />} />
                       <Route path="/forum/new" element={<CreateForumTopicPage />} />
                       <Route path="/forum/:id" element={<ForumTopicPage />} />
+                      <Route path="/saved" element={<SavedPostsPage />} />
                       <Route path="/admin" element={<AdminPage />} />
                     </Routes>
                   </main>

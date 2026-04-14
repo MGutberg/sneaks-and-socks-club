@@ -1,6 +1,6 @@
 # Sneaks & Socks Club - Session Summary
 **Datum:** 2026-04-14
-**Letzter Commit:** ad2ed39
+**Letzter Commit:** 73b6c0d
 
 ## Projekt-Übersicht
 Social Media Plattform für Sneaker- und Socken-Enthusiasten.
@@ -38,31 +38,70 @@ Social Media Plattform für Sneaker- und Socken-Enthusiasten.
 ### 3. Posts
 - Text + Bild Posts
 - Like/Kommentar-System
-- Gimmick-Galerie (Bilder-Grid)
+- Gimmick-Galerie (Bilder-Grid in Members-Seite)
 
-### 4. Forum (NEU)
+### 4. Forum
 - 6 Kategorien: Allgemein, Sneakers, Socken, Sammlungen, Börse, Off-Topic
 - Topics mit Titel, Inhalt, Bild
 - Replies mit Bild-Support
 - Views-Counter
 - Pinned Topics möglich
 
-### 5. Nachrichten (ERWEITERT)
+### 5. Nachrichten
 - **Chats:** Konversations-Übersicht
 - **Empfangen (Inbox):** Eingehende Nachrichten
 - **Gesendet:** Ausgehende Nachrichten
-- **Archiv:** Archivierte Nachrichten mit:
-  - Checkbox-Auswahl
-  - Alle auswählen
-  - Entarchivieren
-  - Download als TXT
+- **Archiv:** Archivierte Nachrichten mit Checkbox-Auswahl, Entarchivieren, Download als TXT
 
-### 6. UI/UX
+### 6. Erweiterte Profil-Felder (Pulldown-Dropdowns)
+Neue Felder im Profil (alle optional, alle als Select):
+- **Alter** (`age`): 18 bis 65+
+- **Größe** (`height`): 150 bis 210+ cm
+- **Gewicht** (`weight`): 45–55 bis 115+ kg
+- **Statur** (`body_type`): Schlank, Normal, Sportlich, Muskulös, Kräftig, Mollig
+- **Typ** (`look_type`): Bär, Twink, Otter, Daddy, Jock, Cub, Normal, Anderes
+- **Körperbehaarung** (`body_hair`): Glatt, Wenig, Mittel, Behaart, Sehr behaart
+- **Ich bin** (`orientation`): Gay, Bisexuell, Hetero, Lesbisch, Queer, Pansexuell, Asexuell
+- **Raucher** (`smoker`): Nein, Gelegentlich, Ja
+- **Sprachen** (`languages`): Chips (Mehrfachauswahl, kommagetrennt in DB)
+- **Beziehung** (`relationship`): Single, In Beziehung, Offen, Verheiratet, Getrennt
+
+Im Profil wird eine Box "Persönliche Angaben" angezeigt, sobald mind. ein Feld gesetzt ist.
+
+### 7. Profil-Galerie
+- Eigene Bildergalerie pro User (max. 18 Bilder)
+- Responsive Grid (3 Spalten mobile, 4 Spalten desktop)
+- Lightbox beim Klicken auf ein Bild
+- Löschen-Button (nur eigenes Profil, erscheint beim Hover)
+- Backend-Tabelle: `profile_gallery`
+- Routes: `GET /api/users/:id/gallery`, `POST /api/profile/gallery`, `DELETE /api/profile/gallery/:id`
+
+### 8. Gespeicherte Posts (Bookmarks)
+- Lesezeichen-Button (🔖/🏷️) auf jedem Post
+- Toggle: Klick speichert/entfernt den Post
+- Eigene Seite `/saved` mit allen gespeicherten Posts
+- Navbar-Link (Desktop: 🔖-Icon, Mobile: Menü-Eintrag)
+- Backend-Tabelle: `saved_posts` (UNIQUE constraint auf user_id + post_id)
+- Routes: `GET /api/posts/saved`, `POST /api/posts/:id/save`
+
+### 9. Profilbesucher
+- Jeder Profilaufruf wird in `profile_views` gespeichert (außer eigenes Profil)
+- Auf dem eigenen Profil: Sektion "Profilbesucher" mit Avatar-Grid der letzten 30 eindeutigen Besucher
+- Verlinkung zum jeweiligen Profil via Username
+- Route: `GET /api/profile/visitors`
+
+### 10. UI/UX
 - Responsive Design (Mobile Hamburger-Menü)
 - Dark Theme mit Kontrast-Grautönen
 - Streetart Hintergrund
 - Versteckte Scrollbalken
 - Safe-Area Support für Mobile
+
+## Profil-URLs: Username statt UUID
+**Alle** Profil-Links in der App verwenden jetzt den Username:
+- `/profile/DeepSneaks` statt `/profile/74251691-4b1a-4830-...`
+- `ProfilePage` unterstützt beide Formate (UUID und Username) — erkennt UUID per Regex und löst Username via `GET /api/users/by-username/:username` auf
+- Geändert in: Navbar, Posts, Forum (Topics + Replies), Follower/Following-Modal, Profilbesucher-Grid, Members-Seite, Suche, Chat-Header
 
 ## Datenbank-Schema
 
@@ -70,7 +109,10 @@ Social Media Plattform für Sneaker- und Socken-Enthusiasten.
 ```sql
 id, username, email, password, display_name, bio, avatar,
 location, website, favorite_sneakers, favorite_socks,
-sneaker_size, sock_size, favorite_brands, created_at, last_active
+sneaker_size, sock_size, favorite_brands, created_at, last_active,
+is_admin,
+age, height, weight, body_type, look_type, body_hair,
+orientation, smoker, languages, relationship
 ```
 
 ### Posts
@@ -99,6 +141,22 @@ id, conversation_id, sender_id, content, read_at, created_at, archived_by
 id, user1_id, user2_id, last_message_at, created_at
 ```
 
+### Profile Gallery
+```sql
+id, user_id, image, created_at
+```
+
+### Saved Posts
+```sql
+id, user_id, post_id, created_at
+UNIQUE(user_id, post_id)
+```
+
+### Profile Views
+```sql
+id, profile_id, viewer_id, viewed_at
+```
+
 ## Test-Accounts
 | Username | Passwort | E-Mail |
 |----------|----------|--------|
@@ -122,27 +180,50 @@ dark: {
 // Labels: Allgemein, Sneakers, Socken, Sammlungen, Börse, Off-Topic
 ```
 
-## Setup auf neuem Server
+## Server-Deployment (37.27.209.32)
 
+### Erstinstallation
 ```bash
-# Repository klonen
+ssh root@37.27.209.32
+apt update && apt upgrade -y
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs git
+cd /opt
 git clone https://github.com/MGutberg/sneaks-and-socks-club.git
 cd sneaks-and-socks-club
-
-# Frontend Setup
-cd frontend
-cp .env.example .env
-npm install
-
-# Backend Setup
+cd backend && npm install
+cd ../frontend && npm install
+# .env anpassen:
+echo "VITE_API_URL=http://37.27.209.32:5000" > .env
+npm run build
+npm install -g pm2 serve
 cd ../backend
-npm install
+pm2 start server.js --name "sneaks-backend"
+pm2 start "serve -s /opt/sneaks-and-socks-club/frontend/dist -p 3000" --name "sneaks-frontend"
+pm2 startup && pm2 save
+```
 
-# Starten (2 Terminals)
-# Terminal 1: Backend
+### Update deployen
+```bash
+cd /opt/sneaks-and-socks-club
+git pull origin main
+cd frontend && npm run build
+pm2 restart sneaks-backend
+```
+
+### URLs
+- Frontend: `http://37.27.209.32:3000`
+- Backend API: `http://37.27.209.32:5000/api/users`
+
+## Lokales Setup (neuer Rechner)
+```bash
+git clone https://github.com/MGutberg/sneaks-and-socks-club.git
+cd sneaks-and-socks-club
+cd frontend && cp .env.example .env && npm install
+cd ../backend && npm install
+# Terminal 1:
 cd backend && node server.js
-
-# Terminal 2: Frontend
+# Terminal 2:
 cd frontend && npm run dev
 ```
 

@@ -1620,7 +1620,10 @@ function UserByUsernameRedirect() {
   const apiFetch = useApi();
   useEffect(() => {
     apiFetch(`/api/users/by-username/${username}`)
-      .then(data => navigate(`/profile/${data.id}`, { replace: true }))
+      .then(data => {
+        if (data?.id) navigate(`/profile/${data.id}`, { replace: true });
+        else navigate('/', { replace: true });
+      })
       .catch(() => navigate('/', { replace: true }));
   }, [username]);
   return <div className="min-h-screen flex items-center justify-center text-red-500 font-bold text-xl">Lade Profil...</div>;

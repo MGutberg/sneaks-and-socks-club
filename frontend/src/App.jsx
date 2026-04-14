@@ -64,7 +64,7 @@ function useApi() {
 // --- NOTIFICATION ITEM ---
 function NotifItem({ n, onClose }) {
   const navigate = useNavigate();
-  const imgUrl = (p) => !p ? null : p.startsWith('http') ? p : `${API_URL}/${p}`;
+  const imgUrl = (p) => !p ? null : p.startsWith('http') ? p : `${API_URL}/${p.replace(/^\//, '')}`;
 
   const labels = {
     follow: 'folgt dir jetzt',

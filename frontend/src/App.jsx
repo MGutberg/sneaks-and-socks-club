@@ -1534,7 +1534,7 @@ function ForumTopicPage() {
             ) : (
               <TextWithMentions text={reply.content} className="text-gray-200 text-sm whitespace-pre-wrap" />
             )}
-            {reply.image && <img src={getImageUrl(reply.image)} className="mt-2 sm:mt-3 rounded-lg w-full max-h-[300px] object-cover" />
+            {reply.image && <img src={getImageUrl(reply.image)} className="mt-2 sm:mt-3 rounded-lg w-full max-h-[300px] object-cover" />}
           </div>
         ))}
       </div>

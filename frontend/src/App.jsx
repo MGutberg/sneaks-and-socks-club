@@ -180,7 +180,7 @@ function Navbar() {
   return (
     <nav className="bg-dark-200 border-b border-dark-100 sticky top-0 z-50">
       {/* Desktop & Mobile Header */}
-      <div className="max-w-6xl mx-auto flex justify-between items-center h-14 px-4">
+      <div className="max-w-6xl mx-auto flex justify-between items-center h-16 px-4">
         <div className="flex items-center gap-4">
           <Link to="/" className="text-white font-bold text-lg sm:text-xl">👟 Sneaks & Socks</Link>
 

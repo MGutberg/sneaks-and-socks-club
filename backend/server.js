@@ -185,6 +185,28 @@ db.exec(`
     position INTEGER DEFAULT 0,
     FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
   );
+  CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    type TEXT DEFAULT 'meetup',
+    location TEXT DEFAULT '',
+    event_date DATETIME NOT NULL,
+    image TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE TABLE IF NOT EXISTS event_attendees (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT DEFAULT 'going',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, user_id),
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
 
 // Automatisch Spalten bei alten Datenbanken nachrüsten
@@ -518,12 +540,15 @@ function buildUserExport(userId) {
   const savedPosts = db.prepare('SELECT post_id, created_at FROM saved_posts WHERE user_id = ?').all(userId);
   const reports = db.prepare('SELECT id, content_type, content_id, reason, status, created_at FROM reports WHERE reporter_id = ?').all(userId);
   const listings = db.prepare('SELECT id, title, description, price, currency, condition, category, size, status, created_at, updated_at FROM listings WHERE user_id = ?').all(userId);
+  const eventsCreated = db.prepare('SELECT id, title, description, type, location, event_date, image, created_at FROM events WHERE user_id = ?').all(userId);
+  const eventAttendance = db.prepare('SELECT event_id, status, created_at FROM event_attendees WHERE user_id = ?').all(userId);
   return {
     export_date: new Date().toISOString(),
     user, posts, comments, likes, reactions, follows, followers,
     forum_topics: topics, forum_replies: replies, messages_sent: messages,
     profile_gallery: gallery, saved_posts: savedPosts, reports_submitted: reports,
     listings,
+    events_created: eventsCreated, event_attendance: eventAttendance,
   };
 }
 
@@ -551,6 +576,7 @@ app.get('/api/profile/export/zip', authenticateToken, (req, res) => {
   data.forum_topics.forEach(t => t.image && imagePaths.add(t.image));
   data.forum_replies.forEach(r => r.image && imagePaths.add(r.image));
   data.profile_gallery.forEach(g => g.image && imagePaths.add(g.image));
+  data.events_created.forEach(e => e.image && imagePaths.add(e.image));
   for (const p of imagePaths) {
     const rel = p.replace(/^\/uploads\//, '');
     const abs = path.join(UPLOAD_DIR, rel);
@@ -1035,6 +1061,118 @@ app.delete('/api/market/listings/:id/images/:imgId', authenticateToken, (req, re
   if (listing.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
   db.prepare('DELETE FROM listing_images WHERE id = ? AND listing_id = ?').run(req.params.imgId, req.params.id);
   res.json({ ok: true });
+});
+
+// --- EVENTS ROUTES ---
+const EVENT_TYPES = [
+  { id: 'meetup', name: 'Meetup', icon: '🤝' },
+  { id: 'release', name: 'Release', icon: '🚀' },
+  { id: 'drop', name: 'Drop', icon: '💧' },
+  { id: 'other', name: 'Sonstiges', icon: '📅' },
+];
+
+app.get('/api/events/meta', authenticateToken, (req, res) => {
+  res.json({ types: EVENT_TYPES });
+});
+
+app.get('/api/events', authenticateToken, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+  const type = req.query.type;
+  const past = req.query.past === 'true';
+  const where = [past ? 'e.event_date < ?' : 'e.event_date >= ?'];
+  const params = [new Date().toISOString()];
+  if (type && type !== 'all') { where.push('e.type = ?'); params.push(type); }
+  const order = past ? 'e.event_date DESC' : 'e.event_date ASC';
+  const rows = db.prepare(`
+    SELECT e.*, u.username, u.display_name, u.avatar,
+    (SELECT COUNT(*) FROM event_attendees WHERE event_id = e.id AND status = 'going') as going_count,
+    (SELECT status FROM event_attendees WHERE event_id = e.id AND user_id = ?) as my_status
+    FROM events e JOIN users u ON e.user_id = u.id
+    WHERE ${where.join(' AND ')}
+    ORDER BY ${order} LIMIT ? OFFSET ?
+  `).all(req.user.id, ...params, limit, offset);
+  res.json(rows);
+});
+
+app.get('/api/events/:id', authenticateToken, (req, res) => {
+  const event = db.prepare(`
+    SELECT e.*, u.username, u.display_name, u.avatar,
+    (SELECT COUNT(*) FROM event_attendees WHERE event_id = e.id AND status = 'going') as going_count,
+    (SELECT COUNT(*) FROM event_attendees WHERE event_id = e.id AND status = 'interested') as interested_count,
+    (SELECT status FROM event_attendees WHERE event_id = e.id AND user_id = ?) as my_status
+    FROM events e JOIN users u ON e.user_id = u.id WHERE e.id = ?
+  `).get(req.user.id, req.params.id);
+  if (!event) return res.status(404).json({ error: 'Not found' });
+  const attendees = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, a.status
+    FROM event_attendees a JOIN users u ON a.user_id = u.id
+    WHERE a.event_id = ? ORDER BY a.created_at ASC
+  `).all(req.params.id);
+  res.json({ ...event, attendees });
+});
+
+app.post('/api/events', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    const { title, description, type, location, event_date } = req.body;
+    if (!title || !event_date) return res.status(400).json({ error: 'Titel und Datum sind pflicht' });
+    if (isNaN(Date.parse(event_date))) return res.status(400).json({ error: 'Ungültiges Datum' });
+    let image = '';
+    if (req.file) image = await saveFileLocally(req.file.buffer, req.file.originalname, false);
+    const id = uuidv4();
+    db.prepare('INSERT INTO events (id, user_id, title, description, type, location, event_date, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      id, req.user.id, title, description || '',
+      EVENT_TYPES.find(t => t.id === type) ? type : 'meetup',
+      location || '', event_date, image
+    );
+    res.json({ id });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Fehler beim Erstellen' }); }
+});
+
+app.put('/api/events/:id', authenticateToken, upload.single('image'), async (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+  if (!event) return res.status(404).json({ error: 'Not found' });
+  const isAdmin = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id)?.is_admin;
+  if (event.user_id !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+  try {
+    const { title, description, type, location, event_date } = req.body;
+    let image = event.image;
+    if (req.file) image = await saveFileLocally(req.file.buffer, req.file.originalname, false);
+    db.prepare('UPDATE events SET title = ?, description = ?, type = ?, location = ?, event_date = ?, image = ? WHERE id = ?').run(
+      title ?? event.title,
+      description ?? event.description,
+      EVENT_TYPES.find(t => t.id === type) ? type : event.type,
+      location ?? event.location,
+      event_date ?? event.event_date,
+      image, req.params.id
+    );
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Fehler' }); }
+});
+
+app.delete('/api/events/:id', authenticateToken, (req, res) => {
+  const event = db.prepare('SELECT user_id FROM events WHERE id = ?').get(req.params.id);
+  if (!event) return res.status(404).json({ error: 'Not found' });
+  const isAdmin = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id)?.is_admin;
+  if (event.user_id !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+  db.prepare('DELETE FROM event_attendees WHERE event_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM events WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/events/:id/attend', authenticateToken, (req, res) => {
+  const event = db.prepare('SELECT id FROM events WHERE id = ?').get(req.params.id);
+  if (!event) return res.status(404).json({ error: 'Not found' });
+  const { status } = req.body; // 'going' | 'interested' | null (to remove)
+  const existing = db.prepare('SELECT id FROM event_attendees WHERE event_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!status) {
+    if (existing) db.prepare('DELETE FROM event_attendees WHERE id = ?').run(existing.id);
+    return res.json({ status: null });
+  }
+  if (!['going', 'interested'].includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
+  if (existing) db.prepare('UPDATE event_attendees SET status = ? WHERE id = ?').run(status, existing.id);
+  else db.prepare('INSERT INTO event_attendees (id, event_id, user_id, status) VALUES (?, ?, ?, ?)').run(uuidv4(), req.params.id, req.user.id, status);
+  res.json({ status });
 });
 
 app.get('/api/forum/topics', authenticateToken, (req, res) => {

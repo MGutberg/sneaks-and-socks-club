@@ -196,6 +196,7 @@ function Navbar() {
             <Link to="/members" className="text-gray-400 hover:text-white transition text-sm font-medium ml-1">Members</Link>
             <Link to="/forum" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">💬 Forum</Link>
             <Link to="/market" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">🛒 Markt</Link>
+            <Link to="/events" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">📅 Events</Link>
             {user?.is_admin && <Link to="/admin" className="text-yellow-400 hover:text-yellow-300 transition text-sm font-bold ml-3">⚙️ Admin</Link>}
           </div>
 
@@ -311,6 +312,9 @@ function Navbar() {
             </Link>
             <Link to="/market" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>🛒</span> Marktplatz
+            </Link>
+            <Link to="/events" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
+              <span>📅</span> Events
             </Link>
             <Link to="/saved" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>🔖</span> Gespeicherte Posts
@@ -2045,6 +2049,305 @@ function MarketEditPage() {
   );
 }
 
+// --- EVENTS ---
+function formatEventDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) +
+    ' · ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+function eventMonthKey(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+}
+
+function EventsPage() {
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [meta, setMeta] = useState({ types: [] });
+  const [type, setType] = useState('all');
+  const [past, setPast] = useState(false);
+
+  useEffect(() => { apiFetch('/api/events/meta').then(setMeta).catch(() => {}); }, []);
+
+  const { items: events, loading, hasMore, sentinelRef } = useInfiniteList(
+    (offset, limit) => {
+      const parts = [`offset=${offset}`, `limit=${limit}`, `past=${past}`];
+      if (type !== 'all') parts.push(`type=${type}`);
+      return `/api/events?${parts.join('&')}`;
+    },
+    [type, past]
+  );
+
+  const typeInfo = (id) => meta.types.find(t => t.id === id) || { name: id, icon: '📅' };
+
+  const grouped = events.reduce((acc, e) => {
+    const key = eventMonthKey(e.event_date);
+    (acc[key] = acc[key] || []).push(e);
+    return acc;
+  }, {});
+
+  return (
+    <div className="max-w-3xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Events</h1>
+          <p className="text-gray-500 text-xs sm:text-sm">Meetups, Releases, Drops</p>
+        </div>
+        <button onClick={() => navigate('/events/new')} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm sm:text-base">
+          <span>+</span> Neues Event
+        </button>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide">
+        <button onClick={() => setType('all')} className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition ${type === 'all' ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>Alle</button>
+        {meta.types.map(t => (
+          <button key={t.id} onClick={() => setType(t.id)} className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5 ${type === t.id ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>
+            <span>{t.icon}</span> {t.name}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 mb-4 sm:mb-6">
+        <button onClick={() => setPast(false)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${!past ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>Kommend</button>
+        <button onClick={() => setPast(true)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${past ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>Vergangen</button>
+      </div>
+
+      {loading && events.length === 0 ? (
+        <div className="text-center text-gray-400 py-10">Lade Events...</div>
+      ) : events.length === 0 ? (
+        <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl border border-dark-100">
+          <span className="text-4xl sm:text-5xl">📅</span>
+          <p className="text-gray-400 mt-3 font-medium text-sm">{past ? 'Keine vergangenen Events' : 'Noch keine kommenden Events'}</p>
+        </div>
+      ) : (
+        <>
+          {Object.entries(grouped).map(([month, list]) => (
+            <div key={month} className="mb-6">
+              <h2 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-3 pl-1">{month}</h2>
+              <div className="space-y-2 sm:space-y-3">
+                {list.map(e => (
+                  <Link key={e.id} to={`/events/${e.id}`} className="block bg-dark-200 p-3 sm:p-4 rounded-xl border border-dark-100 hover:border-red-500 active:scale-[0.99] transition">
+                    <div className="flex gap-3 sm:gap-4">
+                      <div className="flex flex-col items-center justify-center bg-red-950 text-red-300 rounded-xl w-14 sm:w-16 py-2 flex-shrink-0">
+                        <span className="text-[10px] uppercase tracking-wider">{new Date(e.event_date).toLocaleDateString('de-DE', { month: 'short' })}</span>
+                        <span className="text-xl sm:text-2xl font-bold">{new Date(e.event_date).getDate()}</span>
+                        <span className="text-[10px] text-red-400">{new Date(e.event_date).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs bg-dark-100 px-2 py-0.5 rounded">{typeInfo(e.type).icon} {typeInfo(e.type).name}</span>
+                          {e.my_status === 'going' && <span className="text-xs bg-green-700 text-white px-2 py-0.5 rounded">✓ Dabei</span>}
+                          {e.my_status === 'interested' && <span className="text-xs bg-yellow-700 text-white px-2 py-0.5 rounded">★ Interessiert</span>}
+                        </div>
+                        <h3 className="text-white font-bold text-sm sm:text-base truncate">{e.title}</h3>
+                        {e.location && <p className="text-gray-400 text-xs mt-1 truncate">📍 {e.location}</p>}
+                        <p className="text-gray-500 text-xs mt-1">👥 {e.going_count || 0} dabei · @{e.username}</p>
+                      </div>
+                      {e.image && <img src={getImageUrl(e.image)} className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover flex-shrink-0 hidden sm:block" />}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+          {hasMore && <div ref={sentinelRef} className="h-10" />}
+          {loading && events.length > 0 && <div className="text-center text-gray-500 text-sm py-4">Lade...</div>}
+          {!hasMore && <div className="text-center text-gray-600 text-xs py-4">— Ende —</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function EventDetailPage() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [event, setEvent] = useState(null);
+  const [meta, setMeta] = useState({ types: [] });
+
+  const load = () => apiFetch(`/api/events/${id}`).then(setEvent).catch(() => {});
+  useEffect(() => { load(); apiFetch('/api/events/meta').then(setMeta).catch(() => {}); }, [id]);
+
+  if (!event) return <div className="text-white p-10 text-center">Lade Event...</div>;
+
+  const isOwner = user?.id === event.user_id;
+  const typeInfo = meta.types.find(t => t.id === event.type) || { name: event.type, icon: '📅' };
+  const past = new Date(event.event_date) < new Date();
+
+  const attend = async (status) => {
+    try {
+      const newStatus = event.my_status === status ? null : status;
+      await apiFetch(`/api/events/${id}/attend`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
+      load();
+    } catch (e) { alert('Fehler'); }
+  };
+
+  const deleteEvent = async () => {
+    if (!confirm('Event wirklich löschen?')) return;
+    try { await apiFetch(`/api/events/${id}`, { method: 'DELETE' }); navigate('/events'); }
+    catch (e) { alert('Fehler'); }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <button onClick={() => navigate('/events')} className="text-gray-400 hover:text-white text-sm mb-4">← Zurück</button>
+      <div className="bg-dark-200 rounded-2xl border border-dark-100 overflow-hidden shadow-lg">
+        {event.image && <img src={getImageUrl(event.image)} className="w-full aspect-video object-cover" />}
+        <div className="p-4 sm:p-6">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="text-xs bg-dark-100 px-2 py-1 rounded">{typeInfo.icon} {typeInfo.name}</span>
+            {past && <span className="text-xs bg-gray-700 text-white px-2 py-1 rounded">Vergangen</span>}
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3">{event.title}</h1>
+          <div className="bg-dark-100 rounded-xl p-3 sm:p-4 mb-4 space-y-2 text-sm">
+            <p className="text-gray-300">📅 <strong className="text-white">{formatEventDate(event.event_date)}</strong></p>
+            {event.location && <p className="text-gray-300">📍 <strong className="text-white">{event.location}</strong></p>}
+          </div>
+          {event.description && <p className="text-gray-300 whitespace-pre-wrap mb-6">{event.description}</p>}
+
+          <div className="flex items-center gap-3 mb-6 pb-6 border-b border-dark-100">
+            <Link to={`/profile/${event.username}`} className="w-10 h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+              {event.avatar ? <img src={getImageUrl(event.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{event.username[0].toUpperCase()}</span>}
+            </Link>
+            <div>
+              <p className="text-gray-500 text-xs">Erstellt von</p>
+              <Link to={`/profile/${event.username}`} className="text-white font-bold hover:underline text-sm">{event.display_name || event.username}</Link>
+            </div>
+          </div>
+
+          {!past && (
+            <div className="flex gap-2 mb-6">
+              <button onClick={() => attend('going')} className={`flex-1 px-4 py-2.5 rounded-xl font-bold transition ${event.my_status === 'going' ? 'bg-green-600 text-white' : 'bg-dark-100 hover:bg-dark-300 text-white'}`}>
+                {event.my_status === 'going' ? '✓ Dabei' : 'Dabei sein'}
+              </button>
+              <button onClick={() => attend('interested')} className={`flex-1 px-4 py-2.5 rounded-xl font-bold transition ${event.my_status === 'interested' ? 'bg-yellow-600 text-white' : 'bg-dark-100 hover:bg-dark-300 text-white'}`}>
+                {event.my_status === 'interested' ? '★ Interessiert' : 'Interessiert'}
+              </button>
+            </div>
+          )}
+
+          {isOwner && (
+            <div className="flex gap-2 mb-6">
+              <button onClick={() => navigate(`/events/edit/${event.id}`)} className="flex-1 bg-dark-100 hover:bg-dark-300 text-white px-4 py-2 rounded-xl text-sm font-bold transition">✏️ Bearbeiten</button>
+              <button onClick={deleteEvent} className="flex-1 bg-red-950 hover:bg-red-900 text-red-300 px-4 py-2 rounded-xl text-sm font-bold transition">🗑️ Löschen</button>
+            </div>
+          )}
+
+          <div>
+            <h3 className="text-white font-bold mb-3">Teilnehmer ({event.going_count || 0} dabei · {event.interested_count || 0} interessiert)</h3>
+            {event.attendees.length === 0 ? (
+              <p className="text-gray-500 text-sm">Noch niemand angemeldet.</p>
+            ) : (
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
+                {event.attendees.map(a => (
+                  <Link key={a.id} to={`/profile/${a.username}`} className="flex flex-col items-center gap-1.5 group" title={`${a.display_name || a.username} – ${a.status === 'going' ? 'dabei' : 'interessiert'}`}>
+                    <div className={`w-12 h-12 rounded-full overflow-hidden border-2 ${a.status === 'going' ? 'border-green-600' : 'border-yellow-600'}`}>
+                      {a.avatar ? <img src={getImageUrl(a.avatar)} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-dark-300 flex items-center justify-center text-sm font-bold text-gray-400">{(a.display_name || a.username)[0].toUpperCase()}</div>}
+                    </div>
+                    <span className="text-xs text-gray-400 truncate w-full text-center">{a.username}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventEditPage() {
+  const { id } = useParams();
+  const isEdit = !!id;
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [meta, setMeta] = useState({ types: [] });
+  const [form, setForm] = useState({ title: '', description: '', type: 'meetup', location: '', event_date: '' });
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    apiFetch('/api/events/meta').then(setMeta).catch(() => {});
+    if (isEdit) {
+      apiFetch(`/api/events/${id}`).then(e => {
+        const d = new Date(e.event_date);
+        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        setForm({ title: e.title, description: e.description, type: e.type, location: e.location || '', event_date: local });
+      }).catch(() => {});
+    }
+  }, [id]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      Object.entries(form).forEach(([k, v]) => {
+        if (k === 'event_date') fd.append(k, new Date(v).toISOString());
+        else fd.append(k, v);
+      });
+      if (file) fd.append('image', file);
+      if (isEdit) {
+        await apiFetch(`/api/events/${id}`, { method: 'PUT', body: fd });
+        navigate(`/events/${id}`);
+      } else {
+        const res = await apiFetch('/api/events', { method: 'POST', body: fd });
+        navigate(`/events/${res.id}`);
+      }
+    } catch (e) { alert('Fehler: ' + e.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <h1 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">{isEdit ? 'Event bearbeiten' : 'Neues Event'}</h1>
+      <form onSubmit={submit} className="bg-dark-200 rounded-2xl border border-dark-100 p-4 sm:p-6 space-y-4">
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Titel *</label>
+          <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Typ</label>
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none">
+              {meta.types.map(t => <option key={t.id} value={t.id}>{t.icon} {t.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Datum & Uhrzeit *</label>
+            <input required type="datetime-local" value={form.event_date} onChange={e => setForm({ ...form, event_date: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none" />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Ort</label>
+          <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="z.B. Berlin, Hauptbahnhof" className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none" />
+        </div>
+
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Beschreibung</label>
+          <textarea rows="5" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none resize-none" />
+        </div>
+
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Bild</label>
+          <input type="file" accept="image/*" onChange={e => setFile(e.target.files[0])} className="w-full text-gray-400 text-sm" />
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button type="button" onClick={() => navigate(-1)} className="flex-1 bg-dark-100 hover:bg-dark-300 text-white py-3 rounded-xl font-bold transition">Abbrechen</button>
+          <button type="submit" disabled={loading} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold transition disabled:opacity-50">
+            {loading ? 'Speichere...' : isEdit ? 'Speichern' : 'Event erstellen'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function ForumPage() {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -3009,6 +3312,10 @@ export default function App() {
                       <Route path="/market/new" element={<MarketEditPage />} />
                       <Route path="/market/edit/:id" element={<MarketEditPage />} />
                       <Route path="/market/:id" element={<MarketDetailPage />} />
+                      <Route path="/events" element={<EventsPage />} />
+                      <Route path="/events/new" element={<EventEditPage />} />
+                      <Route path="/events/edit/:id" element={<EventEditPage />} />
+                      <Route path="/events/:id" element={<EventDetailPage />} />
                       <Route path="/saved" element={<SavedPostsPage />} />
                       <Route path="/admin" element={<AdminPage />} />
                     </Routes>

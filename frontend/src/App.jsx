@@ -785,6 +785,44 @@ function HomePage() {
   )
 }
 
+function DataExportBox() {
+  const { token } = useAuth();
+  const [loading, setLoading] = useState(null);
+  const download = async (format) => {
+    setLoading(format);
+    try {
+      const res = await fetch(`${API_URL}/api/profile/export${format === 'zip' ? '/zip' : ''}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Fehler');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const cd = res.headers.get('Content-Disposition') || '';
+      const match = cd.match(/filename="([^"]+)"/);
+      a.href = url;
+      a.download = match ? match[1] : (format === 'zip' ? 'export.zip' : 'export.json');
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) { alert('Export fehlgeschlagen'); }
+    finally { setLoading(null); }
+  };
+  return (
+    <div className="bg-dark-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-dark-100 mb-4 sm:mb-8 shadow-lg">
+      <h2 className="text-xl font-bold text-white mb-2">Daten-Export (DSGVO)</h2>
+      <p className="text-gray-400 text-sm mb-4">Lade alle deine Daten herunter – dein Profil, Posts, Kommentare, Nachrichten, Galerie etc.</p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <button onClick={() => download('json')} disabled={loading} className="bg-dark-100 hover:bg-dark-300 text-white px-4 py-2 rounded-xl text-sm font-medium transition disabled:opacity-50">
+          {loading === 'json' ? 'Lade...' : '📄 Als JSON'}
+        </button>
+        <button onClick={() => download('zip')} disabled={loading} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition disabled:opacity-50">
+          {loading === 'zip' ? 'Lade...' : '🗄️ Als ZIP (inkl. Bilder)'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // --- PROFILE PAGE ---
 const PROFILE_OPTS = {
   age: ['18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45','46','47','48','49','50','51','52','53','54','55','56','57','58','59','60','61','62','63','64','65+'],
@@ -1185,6 +1223,9 @@ function ProfilePage() {
           )}
         </div>
       )}
+
+      {/* Daten-Export (DSGVO) – nur auf eigenem Profil */}
+      {isOwnProfile && <DataExportBox />}
 
       <h2 className="text-2xl font-bold text-white mb-6 pl-2">Posts von {profile.display_name || profile.username}</h2>
       {posts.length === 0 ? <div className="text-center bg-dark-200 p-8 rounded-2xl border border-dark-100"><p className="text-gray-400 font-medium">Keine Posts vorhanden.</p></div> : posts.map(p => <Post key={p.id} post={p} onRefresh={loadData} />)}

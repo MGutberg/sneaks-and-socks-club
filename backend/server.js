@@ -10,6 +10,7 @@ const Database = require('better-sqlite3');
 const sharp = require('sharp');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const archiver = require('archiver');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -476,6 +477,62 @@ app.delete('/api/profile/gallery/:id', authenticateToken, (req, res) => {
   if (!item || item.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
   db.prepare('DELETE FROM profile_gallery WHERE id = ?').run(req.params.id);
   res.json({ success: true });
+});
+
+// --- DATA EXPORT (DSGVO) ---
+function buildUserExport(userId) {
+  const user = db.prepare('SELECT id, username, email, display_name, bio, avatar, location, website, favorite_sneakers, favorite_socks, sneaker_size, sock_size, favorite_brands, age, height, weight, body_type, look_type, body_hair, orientation, smoker, languages, relationship, email_verified, created_at, last_active FROM users WHERE id = ?').get(userId);
+  if (!user) return null;
+  const posts = db.prepare('SELECT id, content, image, created_at FROM posts WHERE user_id = ?').all(userId);
+  const comments = db.prepare('SELECT id, post_id, content, created_at FROM comments WHERE user_id = ?').all(userId);
+  const likes = db.prepare('SELECT post_id, created_at FROM likes WHERE user_id = ?').all(userId);
+  const reactions = db.prepare('SELECT post_id, emoji, created_at FROM reactions WHERE user_id = ?').all(userId);
+  const follows = db.prepare('SELECT following_id, created_at FROM follows WHERE follower_id = ?').all(userId);
+  const followers = db.prepare('SELECT follower_id, created_at FROM follows WHERE following_id = ?').all(userId);
+  const topics = db.prepare('SELECT id, title, content, image, category, views, pinned, created_at, updated_at FROM forum_topics WHERE user_id = ?').all(userId);
+  const replies = db.prepare('SELECT id, topic_id, content, image, created_at FROM forum_replies WHERE user_id = ?').all(userId);
+  const messages = db.prepare('SELECT id, conversation_id, content, read_at, created_at FROM messages WHERE sender_id = ?').all(userId);
+  const gallery = db.prepare('SELECT id, image, created_at FROM profile_gallery WHERE user_id = ?').all(userId);
+  const savedPosts = db.prepare('SELECT post_id, created_at FROM saved_posts WHERE user_id = ?').all(userId);
+  const reports = db.prepare('SELECT id, content_type, content_id, reason, status, created_at FROM reports WHERE reporter_id = ?').all(userId);
+  return {
+    export_date: new Date().toISOString(),
+    user, posts, comments, likes, reactions, follows, followers,
+    forum_topics: topics, forum_replies: replies, messages_sent: messages,
+    profile_gallery: gallery, saved_posts: savedPosts, reports_submitted: reports,
+  };
+}
+
+app.get('/api/profile/export', authenticateToken, (req, res) => {
+  const data = buildUserExport(req.user.id);
+  if (!data) return res.status(404).json({ error: 'User not found' });
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="export-${data.user.username}.json"`);
+  res.send(JSON.stringify(data, null, 2));
+});
+
+app.get('/api/profile/export/zip', authenticateToken, (req, res) => {
+  const data = buildUserExport(req.user.id);
+  if (!data) return res.status(404).json({ error: 'User not found' });
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="export-${data.user.username}.zip"`);
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.on('error', err => { console.error(err); try { res.status(500).end(); } catch {} });
+  archive.pipe(res);
+  archive.append(JSON.stringify(data, null, 2), { name: 'data.json' });
+  // Include all referenced image files
+  const imagePaths = new Set();
+  if (data.user.avatar) imagePaths.add(data.user.avatar);
+  data.posts.forEach(p => p.image && imagePaths.add(p.image));
+  data.forum_topics.forEach(t => t.image && imagePaths.add(t.image));
+  data.forum_replies.forEach(r => r.image && imagePaths.add(r.image));
+  data.profile_gallery.forEach(g => g.image && imagePaths.add(g.image));
+  for (const p of imagePaths) {
+    const rel = p.replace(/^\/uploads\//, '');
+    const abs = path.join(UPLOAD_DIR, rel);
+    if (fs.existsSync(abs)) archive.file(abs, { name: `uploads/${rel}` });
+  }
+  archive.finalize();
 });
 
 // --- POST ROUTES ---

@@ -3584,6 +3584,139 @@ function AdminPage() {
   );
 }
 
+// --- FOOTER & LEGAL PAGES ---
+const LEGAL_CONTENT = {
+  impressum: {
+    title: 'Impressum',
+    body: `Angaben gemäß § 5 TMG
+
+IT MEDIA DESIGN Gutberg
+— Inhaber: M. Gutberg —
+
+Kontakt:
+E-Mail: deepvoiceinc@web.de
+
+Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV:
+M. Gutberg
+
+Haftungsausschluss:
+Die Inhalte dieser Seiten wurden mit größter Sorgfalt erstellt. Für die Richtigkeit, Vollständigkeit und Aktualität der Inhalte können wir jedoch keine Gewähr übernehmen.`
+  },
+  datenschutz: {
+    title: 'Datenschutz',
+    body: `Diese Datenschutzerklärung klärt dich über Art, Umfang und Zweck der Verarbeitung personenbezogener Daten auf.
+
+1. Verantwortlicher
+IT MEDIA DESIGN Gutberg, deepvoiceinc@web.de
+
+2. Welche Daten werden erhoben?
+- Bei der Registrierung: Username, E-Mail, Passwort (gehasht)
+- Optional: Anzeigename, Bio, Avatar, Profilangaben
+- Inhalte, die du selbst postest (Posts, Kommentare, Nachrichten, Inserate, Events)
+- Profilaufrufe und -besucher
+
+3. Rechtsgrundlage
+Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung) für die Nutzung der Plattform.
+
+4. Deine Rechte
+- Auskunft (Art. 15 DSGVO) — Export auf deinem Profil
+- Berichtigung (Art. 16 DSGVO)
+- Löschung (Art. 17 DSGVO)
+- Datenübertragbarkeit (Art. 20 DSGVO) — JSON/ZIP-Export verfügbar
+- Widerspruch (Art. 21 DSGVO)
+
+5. Cookies
+Diese Website verwendet nur technisch notwendige Speicherung (Login-Token im LocalStorage). Keine Tracking-Cookies.`
+  },
+  cookies: {
+    title: 'Cookies',
+    body: `Wir verwenden keine Tracking-Cookies.
+
+Technisch notwendige Speicherung:
+- Login-Token im LocalStorage des Browsers (um dich eingeloggt zu halten)
+- Theme-Einstellung (Dark/Light)
+
+Diese Einträge verbleiben bis zum Logout oder bis du sie manuell entfernst.`
+  },
+  agb: {
+    title: 'AGB',
+    body: `Allgemeine Geschäftsbedingungen von Sneaks & Socks Club
+
+§1 Geltungsbereich
+Diese AGB gelten für die Nutzung der Plattform Sneaks & Socks Club.
+
+§2 Registrierung
+Die Registrierung ist kostenlos. Mit der Registrierung akzeptierst du diese AGB.
+
+§3 Nutzerpflichten
+- Keine rechtswidrigen, beleidigenden oder diskriminierenden Inhalte
+- Keine Urheberrechtsverletzungen
+- Keine Spam- oder Werbung ohne Zustimmung
+- Korrekte Angaben bei Inseraten im Marktplatz
+
+§4 Marktplatz
+Der Marktplatz ist reine Anzeigenplattform. Kaufverträge kommen ausschließlich zwischen den Nutzern zustande. Der Betreiber ist nicht Vertragspartei.
+
+§5 Haftung
+Der Betreiber haftet nur bei Vorsatz und grober Fahrlässigkeit.
+
+§6 Kündigung
+Du kannst deinen Account jederzeit löschen. Dein Content bleibt gelöscht.`
+  },
+  dsgvo: {
+    title: 'DSGVO',
+    body: `Hinweise zur Datenschutzgrundverordnung (DSGVO)
+
+Wir verarbeiten deine Daten nach den Vorgaben der DSGVO.
+
+Deine Rechte im Überblick:
+• Art. 15 – Auskunftsrecht: Du kannst jederzeit eine Kopie aller über dich gespeicherten Daten anfordern. Über dein Profil → "Daten-Export (DSGVO)" als JSON oder ZIP.
+• Art. 16 – Berichtigung: Du kannst dein Profil jederzeit selbst bearbeiten.
+• Art. 17 – Löschung: Du kannst deinen Account löschen lassen. Anfrage per E-Mail.
+• Art. 20 – Datenübertragbarkeit: Der ZIP-Export enthält alle Inhalte und Bilder im maschinenlesbaren Format.
+• Art. 21 – Widerspruch: Du kannst der Verarbeitung jederzeit widersprechen.
+
+Datenschutzbeauftragter / Kontakt:
+E-Mail: deepvoiceinc@web.de`
+  },
+};
+
+function LegalPage() {
+  const { page } = useParams();
+  const content = LEGAL_CONTENT[page];
+  if (!content) return <div className="text-white p-10 text-center">Seite nicht gefunden.</div>;
+  return (
+    <div className="max-w-3xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <div className="bg-dark-200 rounded-2xl border border-dark-100 p-4 sm:p-8 shadow-lg">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white mb-6">{content.title}</h1>
+        <div className="text-gray-300 whitespace-pre-wrap leading-relaxed">{content.body}</div>
+      </div>
+    </div>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="bg-black border-t border-dark-100 mt-8">
+      <div className="max-w-6xl mx-auto px-4 py-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
+        <Link to="/" className="flex-shrink-0">
+          <img src="/logo.png" alt="Sneaks & Socks Club" className="h-12 sm:h-14 w-auto object-contain" />
+        </Link>
+        <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-gray-400 flex-1">
+          <Link to="/legal/impressum" className="hover:text-red-400 transition">Impressum</Link>
+          <Link to="/legal/datenschutz" className="hover:text-red-400 transition">Datenschutz</Link>
+          <Link to="/legal/cookies" className="hover:text-red-400 transition">Cookies</Link>
+          <Link to="/legal/agb" className="hover:text-red-400 transition">AGB</Link>
+          <Link to="/legal/dsgvo" className="hover:text-red-400 transition">DSGVO</Link>
+        </nav>
+        <p className="text-gray-500 text-xs text-center sm:text-right flex-shrink-0">
+          Powered by IT MEDIA DESIGN Gutberg © 2026
+        </p>
+      </div>
+    </footer>
+  );
+}
+
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center text-red-500 font-bold text-xl">Lade Club...</div>;
@@ -3634,8 +3767,10 @@ export default function App() {
                       <Route path="/groups/:slug" element={<GroupDetailPage />} />
                       <Route path="/saved" element={<SavedPostsPage />} />
                       <Route path="/admin" element={<AdminPage />} />
+                      <Route path="/legal/:page" element={<LegalPage />} />
                     </Routes>
                   </main>
+                  <Footer />
                 </div>
               </ProtectedRoute>
             } />

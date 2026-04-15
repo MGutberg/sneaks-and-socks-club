@@ -182,7 +182,9 @@ function Navbar() {
       {/* Desktop & Mobile Header */}
       <div className="max-w-6xl mx-auto flex justify-between items-center h-20 px-4">
         <div className="flex items-center gap-4">
-          <Link to="/" className="text-white font-bold text-lg sm:text-xl">👟 Sneaks & Socks</Link>
+          <Link to="/" className="flex items-center">
+            <img src="/logo.png" alt="Sneaks & Socks Club" className="h-14 sm:h-16 w-auto object-contain" />
+          </Link>
 
           {/* Online Counter & Nav Links - Desktop */}
           <div className="hidden md:flex items-center gap-1.5">

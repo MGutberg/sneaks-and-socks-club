@@ -197,6 +197,29 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS groups (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    icon TEXT DEFAULT '👥',
+    cover_image TEXT DEFAULT '',
+    privacy TEXT DEFAULT 'public',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_id) REFERENCES users(id)
+  );
+  CREATE TABLE IF NOT EXISTS group_members (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT DEFAULT 'member',
+    status TEXT DEFAULT 'active',
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(group_id, user_id),
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
   CREATE TABLE IF NOT EXISTS event_attendees (
     id TEXT PRIMARY KEY,
     event_id TEXT NOT NULL,
@@ -239,6 +262,7 @@ try { db.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0;");
 try { db.exec("ALTER TABLE users ADD COLUMN verification_token TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE users ADD COLUMN reset_expires DATETIME DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE posts ADD COLUMN group_id TEXT DEFAULT NULL;"); } catch (e) {}
 
 // --- NOTIFICATION HELPER ---
 const notify = (userId, type, actorId, contentId = null) => {
@@ -542,6 +566,8 @@ function buildUserExport(userId) {
   const listings = db.prepare('SELECT id, title, description, price, currency, condition, category, size, status, created_at, updated_at FROM listings WHERE user_id = ?').all(userId);
   const eventsCreated = db.prepare('SELECT id, title, description, type, location, event_date, image, created_at FROM events WHERE user_id = ?').all(userId);
   const eventAttendance = db.prepare('SELECT event_id, status, created_at FROM event_attendees WHERE user_id = ?').all(userId);
+  const groupsOwned = db.prepare('SELECT id, slug, name, description, privacy, created_at FROM groups WHERE owner_id = ?').all(userId);
+  const groupMemberships = db.prepare('SELECT group_id, role, status, joined_at FROM group_members WHERE user_id = ?').all(userId);
   return {
     export_date: new Date().toISOString(),
     user, posts, comments, likes, reactions, follows, followers,
@@ -549,6 +575,7 @@ function buildUserExport(userId) {
     profile_gallery: gallery, saved_posts: savedPosts, reports_submitted: reports,
     listings,
     events_created: eventsCreated, event_attendance: eventAttendance,
+    groups_owned: groupsOwned, group_memberships: groupMemberships,
   };
 }
 
@@ -597,7 +624,7 @@ app.get('/api/posts', authenticateToken, (req, res) => {
     (SELECT 1 FROM saved_posts WHERE post_id = p.id AND user_id = ?) as saved,
     (SELECT json_group_object(emoji, c) FROM (SELECT emoji, COUNT(*) as c FROM reactions WHERE post_id = p.id GROUP BY emoji)) as reactions_json,
     (SELECT json_group_array(emoji) FROM reactions WHERE post_id = p.id AND user_id = ?) as my_reactions_json
-    FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC LIMIT ? OFFSET ?
+    FROM posts p JOIN users u ON p.user_id = u.id WHERE p.group_id IS NULL ORDER BY p.created_at DESC LIMIT ? OFFSET ?
   `).all(req.user.id, req.user.id, req.user.id, limit, offset);
   res.json(posts.map(p => ({
     ...p,
@@ -1173,6 +1200,184 @@ app.post('/api/events/:id/attend', authenticateToken, (req, res) => {
   if (existing) db.prepare('UPDATE event_attendees SET status = ? WHERE id = ?').run(status, existing.id);
   else db.prepare('INSERT INTO event_attendees (id, event_id, user_id, status) VALUES (?, ?, ?, ?)').run(uuidv4(), req.params.id, req.user.id, status);
   res.json({ status });
+});
+
+// --- GROUP ROUTES ---
+function slugify(str) {
+  return str.toLowerCase().trim()
+    .replace(/[äÄ]/g, 'ae').replace(/[öÖ]/g, 'oe').replace(/[üÜ]/g, 'ue').replace(/[ß]/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+}
+
+function getGroupMembership(groupId, userId) {
+  return db.prepare('SELECT role, status FROM group_members WHERE group_id = ? AND user_id = ?').get(groupId, userId);
+}
+
+app.get('/api/groups', authenticateToken, (req, res) => {
+  const rows = db.prepare(`
+    SELECT g.*, u.username as owner_username,
+    (SELECT COUNT(*) FROM group_members WHERE group_id = g.id AND status = 'active') as member_count,
+    (SELECT status FROM group_members WHERE group_id = g.id AND user_id = ?) as my_status,
+    (SELECT role FROM group_members WHERE group_id = g.id AND user_id = ?) as my_role
+    FROM groups g JOIN users u ON g.owner_id = u.id
+    ORDER BY g.created_at DESC
+  `).all(req.user.id, req.user.id);
+  res.json(rows);
+});
+
+app.post('/api/groups', authenticateToken, upload.single('cover_image'), async (req, res) => {
+  try {
+    const { name, description, icon, privacy } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name erforderlich' });
+    let slug = slugify(name);
+    if (!slug) return res.status(400).json({ error: 'Ungültiger Name' });
+    // Ensure uniqueness
+    let suffix = 0;
+    while (db.prepare('SELECT 1 FROM groups WHERE slug = ?').get(suffix ? `${slug}-${suffix}` : slug)) suffix++;
+    const finalSlug = suffix ? `${slug}-${suffix}` : slug;
+    let cover = '';
+    if (req.file) cover = await saveFileLocally(req.file.buffer, req.file.originalname, false);
+    const id = uuidv4();
+    db.prepare('INSERT INTO groups (id, owner_id, slug, name, description, icon, cover_image, privacy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      id, req.user.id, finalSlug, name, description || '', icon || '👥', cover,
+      privacy === 'private' ? 'private' : 'public'
+    );
+    db.prepare('INSERT INTO group_members (id, group_id, user_id, role, status) VALUES (?, ?, ?, ?, ?)').run(uuidv4(), id, req.user.id, 'owner', 'active');
+    res.json({ id, slug: finalSlug });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Fehler beim Erstellen' }); }
+});
+
+app.get('/api/groups/:slug', authenticateToken, (req, res) => {
+  const g = db.prepare(`
+    SELECT g.*, u.username as owner_username, u.display_name as owner_display_name, u.avatar as owner_avatar,
+    (SELECT COUNT(*) FROM group_members WHERE group_id = g.id AND status = 'active') as member_count,
+    (SELECT COUNT(*) FROM group_members WHERE group_id = g.id AND status = 'pending') as pending_count,
+    (SELECT status FROM group_members WHERE group_id = g.id AND user_id = ?) as my_status,
+    (SELECT role FROM group_members WHERE group_id = g.id AND user_id = ?) as my_role
+    FROM groups g JOIN users u ON g.owner_id = u.id WHERE g.slug = ?
+  `).get(req.user.id, req.user.id, req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  res.json(g);
+});
+
+app.put('/api/groups/:slug', authenticateToken, upload.single('cover_image'), async (req, res) => {
+  const g = db.prepare('SELECT * FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const membership = getGroupMembership(g.id, req.user.id);
+  if (!membership || !['owner', 'admin'].includes(membership.role)) return res.status(403).json({ error: 'Unauthorized' });
+  try {
+    const { name, description, icon, privacy } = req.body;
+    let cover = g.cover_image;
+    if (req.file) cover = await saveFileLocally(req.file.buffer, req.file.originalname, false);
+    db.prepare('UPDATE groups SET name = ?, description = ?, icon = ?, cover_image = ?, privacy = ? WHERE id = ?').run(
+      name ?? g.name, description ?? g.description, icon ?? g.icon, cover,
+      privacy === 'private' ? 'private' : (privacy === 'public' ? 'public' : g.privacy),
+      g.id
+    );
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Fehler' }); }
+});
+
+app.delete('/api/groups/:slug', authenticateToken, (req, res) => {
+  const g = db.prepare('SELECT * FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const isAdmin = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id)?.is_admin;
+  if (g.owner_id !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+  db.prepare('DELETE FROM posts WHERE group_id = ?').run(g.id);
+  db.prepare('DELETE FROM groups WHERE id = ?').run(g.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/groups/:slug/join', authenticateToken, (req, res) => {
+  const g = db.prepare('SELECT * FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const existing = getGroupMembership(g.id, req.user.id);
+  if (existing) return res.json({ status: existing.status });
+  const status = g.privacy === 'private' ? 'pending' : 'active';
+  db.prepare('INSERT INTO group_members (id, group_id, user_id, role, status) VALUES (?, ?, ?, ?, ?)').run(uuidv4(), g.id, req.user.id, 'member', status);
+  res.json({ status });
+});
+
+app.post('/api/groups/:slug/leave', authenticateToken, (req, res) => {
+  const g = db.prepare('SELECT * FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  if (g.owner_id === req.user.id) return res.status(400).json({ error: 'Owner kann Gruppe nicht verlassen – übergib sie oder lösche die Gruppe' });
+  db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?').run(g.id, req.user.id);
+  res.json({ ok: true });
+});
+
+app.get('/api/groups/:slug/members', authenticateToken, (req, res) => {
+  const g = db.prepare('SELECT id FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const rows = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, m.role, m.status, m.joined_at
+    FROM group_members m JOIN users u ON u.id = m.user_id
+    WHERE m.group_id = ? ORDER BY
+      CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
+      m.joined_at ASC
+  `).all(g.id);
+  res.json(rows);
+});
+
+app.post('/api/groups/:slug/members/:userId/approve', authenticateToken, (req, res) => {
+  const g = db.prepare('SELECT * FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const requesterMembership = getGroupMembership(g.id, req.user.id);
+  if (!requesterMembership || !['owner', 'admin'].includes(requesterMembership.role)) return res.status(403).json({ error: 'Unauthorized' });
+  db.prepare('UPDATE group_members SET status = ? WHERE group_id = ? AND user_id = ?').run('active', g.id, req.params.userId);
+  res.json({ ok: true });
+});
+
+app.delete('/api/groups/:slug/members/:userId', authenticateToken, (req, res) => {
+  const g = db.prepare('SELECT * FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const requesterMembership = getGroupMembership(g.id, req.user.id);
+  if (!requesterMembership || !['owner', 'admin'].includes(requesterMembership.role)) return res.status(403).json({ error: 'Unauthorized' });
+  if (req.params.userId === g.owner_id) return res.status(400).json({ error: 'Owner kann nicht entfernt werden' });
+  db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?').run(g.id, req.params.userId);
+  res.json({ ok: true });
+});
+
+app.get('/api/groups/:slug/posts', authenticateToken, (req, res) => {
+  const g = db.prepare('SELECT * FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const membership = getGroupMembership(g.id, req.user.id);
+  const isMember = membership && membership.status === 'active';
+  if (g.privacy === 'private' && !isMember) return res.status(403).json({ error: 'Gruppe ist privat' });
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+  const posts = db.prepare(`
+    SELECT p.*, u.username, u.display_name, u.avatar,
+    (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+    (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count,
+    (SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as liked,
+    (SELECT 1 FROM saved_posts WHERE post_id = p.id AND user_id = ?) as saved,
+    (SELECT json_group_object(emoji, c) FROM (SELECT emoji, COUNT(*) as c FROM reactions WHERE post_id = p.id GROUP BY emoji)) as reactions_json,
+    (SELECT json_group_array(emoji) FROM reactions WHERE post_id = p.id AND user_id = ?) as my_reactions_json
+    FROM posts p JOIN users u ON p.user_id = u.id WHERE p.group_id = ? ORDER BY p.created_at DESC LIMIT ? OFFSET ?
+  `).all(req.user.id, req.user.id, req.user.id, g.id, limit, offset);
+  res.json(posts.map(p => ({
+    ...p,
+    reactions: p.reactions_json ? JSON.parse(p.reactions_json) : {},
+    my_reactions: p.my_reactions_json ? JSON.parse(p.my_reactions_json) : [],
+    reactions_json: undefined, my_reactions_json: undefined
+  })));
+});
+
+app.post('/api/groups/:slug/posts', authenticateToken, upload.single('image'), async (req, res) => {
+  const g = db.prepare('SELECT id FROM groups WHERE slug = ?').get(req.params.slug);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const membership = getGroupMembership(g.id, req.user.id);
+  if (!membership || membership.status !== 'active') return res.status(403).json({ error: 'Nicht Mitglied' });
+  try {
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ error: 'Inhalt erforderlich' });
+    let image = '';
+    if (req.file) image = await saveFileLocally(req.file.buffer, req.file.originalname, false);
+    const id = uuidv4();
+    db.prepare('INSERT INTO posts (id, user_id, content, image, group_id) VALUES (?, ?, ?, ?, ?)').run(id, req.user.id, content, image, g.id);
+    res.json({ id });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Fehler' }); }
 });
 
 app.get('/api/forum/topics', authenticateToken, (req, res) => {

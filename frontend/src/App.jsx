@@ -197,6 +197,7 @@ function Navbar() {
             <Link to="/forum" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">💬 Forum</Link>
             <Link to="/market" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">🛒 Markt</Link>
             <Link to="/events" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">📅 Events</Link>
+            <Link to="/groups" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">👥 Gruppen</Link>
             {user?.is_admin && <Link to="/admin" className="text-yellow-400 hover:text-yellow-300 transition text-sm font-bold ml-3">⚙️ Admin</Link>}
           </div>
 
@@ -315,6 +316,9 @@ function Navbar() {
             </Link>
             <Link to="/events" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>📅</span> Events
+            </Link>
+            <Link to="/groups" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
+              <span>👥</span> Gruppen
             </Link>
             <Link to="/saved" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>🔖</span> Gespeicherte Posts
@@ -2348,6 +2352,314 @@ function EventEditPage() {
   );
 }
 
+// --- GROUPS ---
+function GroupsPage() {
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('all');
+
+  useEffect(() => { apiFetch('/api/groups').then(g => { setGroups(g); setLoading(false); }).catch(() => setLoading(false)); }, []);
+
+  const filtered = groups.filter(g => {
+    if (tab === 'mine') return g.my_status === 'active';
+    if (tab === 'pending') return g.my_status === 'pending';
+    return true;
+  });
+
+  return (
+    <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Gruppen</h1>
+          <p className="text-gray-500 text-xs sm:text-sm">Communities zu Marken und Themen</p>
+        </div>
+        <button onClick={() => navigate('/groups/new')} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm sm:text-base">
+          <span>+</span> Neue Gruppe
+        </button>
+      </div>
+
+      <div className="flex gap-2 mb-4 sm:mb-6">
+        {[['all', 'Alle'], ['mine', 'Meine'], ['pending', 'Angefragt']].map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${tab === k ? 'bg-red-600 text-white' : 'bg-dark-200 text-gray-400 hover:text-white'}`}>{label}</button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="text-center text-gray-400 py-10">Lade...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl border border-dark-100">
+          <span className="text-4xl sm:text-5xl">👥</span>
+          <p className="text-gray-400 mt-3 font-medium text-sm">Keine Gruppen in dieser Ansicht</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          {filtered.map(g => (
+            <Link key={g.id} to={`/groups/${g.slug}`} className="block bg-dark-200 rounded-xl border border-dark-100 hover:border-red-500 overflow-hidden transition">
+              <div className="h-24 bg-dark-100 relative overflow-hidden">
+                {g.cover_image ? <img src={getImageUrl(g.cover_image)} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full flex items-center justify-center text-5xl">{g.icon}</div>}
+                <span className="absolute top-2 right-2 text-xs font-bold text-white bg-black/60 px-2 py-1 rounded">{g.privacy === 'private' ? '🔒 Privat' : '🌐 Öffentlich'}</span>
+                {g.my_status === 'active' && <span className="absolute top-2 left-2 text-xs font-bold text-white bg-green-600 px-2 py-1 rounded">Mitglied</span>}
+                {g.my_status === 'pending' && <span className="absolute top-2 left-2 text-xs font-bold text-white bg-yellow-600 px-2 py-1 rounded">Angefragt</span>}
+              </div>
+              <div className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">{g.icon}</span>
+                  <h3 className="text-white font-bold truncate">{g.name}</h3>
+                </div>
+                <p className="text-gray-400 text-xs line-clamp-2">{g.description || 'Keine Beschreibung'}</p>
+                <p className="text-gray-500 text-xs mt-2">👥 {g.member_count || 0} Mitglieder</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GroupDetailPage() {
+  const { slug } = useParams();
+  const { user } = useAuth();
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [group, setGroup] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [showMembers, setShowMembers] = useState(false);
+  const [newPost, setNewPost] = useState('');
+  const [newPostImage, setNewPostImage] = useState(null);
+
+  const loadGroup = () => apiFetch(`/api/groups/${slug}`).then(setGroup).catch(() => setGroup(false));
+  useEffect(() => { loadGroup() }, [slug]);
+
+  const canSee = group && (group.privacy === 'public' || group.my_status === 'active' || user?.id === group.owner_id);
+  const isMember = group?.my_status === 'active';
+  const isOwnerOrAdmin = group && (user?.id === group.owner_id || group.my_role === 'admin' || group.my_role === 'owner');
+
+  const { items: posts, loading, hasMore, sentinelRef, reload } = useInfiniteList(
+    (offset, limit) => `/api/groups/${slug}/posts?offset=${offset}&limit=${limit}`,
+    [slug, group?.my_status]
+  );
+
+  const loadMembers = async () => {
+    try { setMembers(await apiFetch(`/api/groups/${slug}/members`)); setShowMembers(true); } catch {}
+  };
+
+  const join = async () => {
+    try {
+      const res = await apiFetch(`/api/groups/${slug}/join`, { method: 'POST' });
+      await loadGroup();
+      if (res.status === 'pending') alert('Anfrage gesendet – warte auf Freischaltung.');
+    } catch (e) { alert('Fehler'); }
+  };
+  const leave = async () => {
+    if (!confirm('Gruppe wirklich verlassen?')) return;
+    try { await apiFetch(`/api/groups/${slug}/leave`, { method: 'POST' }); loadGroup(); } catch (e) { alert('Fehler'); }
+  };
+  const deleteGroup = async () => {
+    if (!confirm('Gruppe wirklich löschen? Alle Posts gehen verloren.')) return;
+    try { await apiFetch(`/api/groups/${slug}`, { method: 'DELETE' }); navigate('/groups'); } catch (e) { alert('Fehler'); }
+  };
+  const approveMember = async (userId) => {
+    try { await apiFetch(`/api/groups/${slug}/members/${userId}/approve`, { method: 'POST' }); loadMembers(); loadGroup(); } catch (e) { alert('Fehler'); }
+  };
+  const removeMember = async (userId) => {
+    if (!confirm('Mitglied entfernen?')) return;
+    try { await apiFetch(`/api/groups/${slug}/members/${userId}`, { method: 'DELETE' }); loadMembers(); loadGroup(); } catch (e) { alert('Fehler'); }
+  };
+
+  const submitPost = async (e) => {
+    e.preventDefault();
+    if (!newPost.trim()) return;
+    const fd = new FormData();
+    fd.append('content', newPost);
+    if (newPostImage) fd.append('image', newPostImage);
+    try {
+      await apiFetch(`/api/groups/${slug}/posts`, { method: 'POST', body: fd });
+      setNewPost(''); setNewPostImage(null);
+      reload();
+    } catch (e) { alert('Fehler'); }
+  };
+
+  if (group === null) return <div className="text-white p-10 text-center">Lade Gruppe...</div>;
+  if (group === false) return <div className="text-white p-10 text-center">Gruppe nicht gefunden.</div>;
+
+  return (
+    <div className="max-w-2xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <button onClick={() => navigate('/groups')} className="text-gray-400 hover:text-white text-sm mb-4">← Alle Gruppen</button>
+
+      <div className="bg-dark-200 rounded-2xl border border-dark-100 overflow-hidden shadow-lg mb-4 sm:mb-6">
+        <div className="h-32 sm:h-40 bg-dark-100 relative">
+          {group.cover_image ? <img src={getImageUrl(group.cover_image)} className="w-full h-full object-cover" />
+            : <div className="w-full h-full flex items-center justify-center text-7xl">{group.icon}</div>}
+          <span className="absolute top-2 right-2 text-xs font-bold text-white bg-black/60 px-2 py-1 rounded">{group.privacy === 'private' ? '🔒 Privat' : '🌐 Öffentlich'}</span>
+        </div>
+        <div className="p-4 sm:p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-3xl">{group.icon}</span>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">{group.name}</h1>
+          </div>
+          {group.description && <p className="text-gray-300 whitespace-pre-wrap mb-4">{group.description}</p>}
+          <div className="flex items-center gap-3 text-sm text-gray-400 mb-4">
+            <button onClick={loadMembers} className="hover:text-white">👥 {group.member_count} Mitglieder</button>
+            {isOwnerOrAdmin && group.pending_count > 0 && <button onClick={loadMembers} className="text-yellow-400 hover:text-yellow-300">⏳ {group.pending_count} offen</button>}
+            <Link to={`/profile/${group.owner_username}`} className="hover:text-white">Owner: @{group.owner_username}</Link>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {!group.my_status && <button onClick={join} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition">{group.privacy === 'private' ? 'Beitritt anfragen' : 'Beitreten'}</button>}
+            {group.my_status === 'pending' && <span className="bg-yellow-700 text-white px-4 py-2 rounded-xl text-sm font-bold">⏳ Anfrage ausstehend</span>}
+            {isMember && user?.id !== group.owner_id && <button onClick={leave} className="bg-dark-100 hover:bg-dark-300 text-white px-4 py-2 rounded-xl text-sm font-bold transition">Verlassen</button>}
+            {isOwnerOrAdmin && <button onClick={() => navigate(`/groups/${slug}/edit`)} className="bg-dark-100 hover:bg-dark-300 text-white px-4 py-2 rounded-xl text-sm font-bold transition">✏️ Bearbeiten</button>}
+            {user?.id === group.owner_id && <button onClick={deleteGroup} className="bg-red-950 hover:bg-red-900 text-red-300 px-4 py-2 rounded-xl text-sm font-bold transition">🗑️ Löschen</button>}
+          </div>
+        </div>
+      </div>
+
+      {/* Members modal */}
+      {showMembers && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowMembers(false)}>
+          <div className="bg-dark-200 rounded-2xl border border-dark-100 w-full max-w-md max-h-[70vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-dark-100">
+              <h3 className="text-white font-bold">Mitglieder</h3>
+              <button onClick={() => setShowMembers(false)} className="text-gray-400 hover:text-white text-xl">×</button>
+            </div>
+            <div className="overflow-y-auto max-h-[60vh] p-4 space-y-2">
+              {members.map(m => (
+                <div key={m.id} className="flex items-center gap-3 p-2 bg-dark-100 rounded-xl">
+                  <Link to={`/profile/${m.username}`} className="w-10 h-10 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+                    {m.avatar ? <img src={getImageUrl(m.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 font-bold">{m.username[0].toUpperCase()}</span>}
+                  </Link>
+                  <div className="flex-1 min-w-0">
+                    <Link to={`/profile/${m.username}`} className="text-white text-sm font-bold hover:underline">{m.display_name || m.username}</Link>
+                    <p className="text-gray-500 text-xs">
+                      {m.role === 'owner' && '👑 Owner'}
+                      {m.role === 'admin' && '⭐ Admin'}
+                      {m.role === 'member' && 'Mitglied'}
+                      {m.status === 'pending' && ' · ⏳ Ausstehend'}
+                    </p>
+                  </div>
+                  {isOwnerOrAdmin && m.status === 'pending' && <button onClick={() => approveMember(m.id)} className="bg-green-700 text-white px-2 py-1 rounded text-xs font-bold">✓</button>}
+                  {isOwnerOrAdmin && m.id !== group.owner_id && m.id !== user?.id && <button onClick={() => removeMember(m.id)} className="bg-red-950 text-red-300 px-2 py-1 rounded text-xs font-bold">×</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!canSee ? (
+        <div className="bg-dark-200 rounded-2xl border border-dark-100 p-6 text-center">
+          <p className="text-gray-400 text-sm">🔒 Diese Gruppe ist privat. Tritt bei, um die Posts zu sehen.</p>
+        </div>
+      ) : (
+        <>
+          {isMember && (
+            <form onSubmit={submitPost} className="bg-dark-200 rounded-2xl border border-dark-100 p-3 sm:p-4 mb-4">
+              <textarea value={newPost} onChange={e => setNewPost(e.target.value)} placeholder={`Schreib etwas in ${group.name}...`} rows="2" className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none resize-none mb-2" />
+              <div className="flex justify-between items-center">
+                <input type="file" accept="image/*" onChange={e => setNewPostImage(e.target.files[0])} className="text-gray-400 text-xs" />
+                <button disabled={!newPost.trim()} className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-sm font-bold transition">Posten</button>
+              </div>
+            </form>
+          )}
+
+          {loading && posts.length === 0 ? (
+            <div className="text-center text-gray-400 py-10">Lade Posts...</div>
+          ) : posts.length === 0 ? (
+            <div className="text-center bg-dark-200 p-6 rounded-xl border border-dark-100">
+              <p className="text-gray-400 text-sm">Noch keine Posts in dieser Gruppe.</p>
+            </div>
+          ) : (
+            <>
+              {posts.map(p => <Post key={p.id} post={p} onRefresh={reload} />)}
+              {hasMore && <div ref={sentinelRef} className="h-10" />}
+              {loading && posts.length > 0 && <div className="text-center text-gray-500 text-sm py-4">Lade...</div>}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function GroupEditPage() {
+  const { slug } = useParams();
+  const isEdit = !!slug;
+  const apiFetch = useApi();
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ name: '', description: '', icon: '👥', privacy: 'public' });
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isEdit) apiFetch(`/api/groups/${slug}`).then(g => setForm({ name: g.name, description: g.description, icon: g.icon, privacy: g.privacy })).catch(() => {});
+  }, [slug]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      if (file) fd.append('cover_image', file);
+      if (isEdit) {
+        await apiFetch(`/api/groups/${slug}`, { method: 'PUT', body: fd });
+        navigate(`/groups/${slug}`);
+      } else {
+        const res = await apiFetch('/api/groups', { method: 'POST', body: fd });
+        navigate(`/groups/${res.slug}`);
+      }
+    } catch (e) { alert('Fehler: ' + e.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <h1 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">{isEdit ? 'Gruppe bearbeiten' : 'Neue Gruppe'}</h1>
+      <form onSubmit={submit} className="bg-dark-200 rounded-2xl border border-dark-100 p-4 sm:p-6 space-y-4">
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Name *</label>
+          <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Icon</label>
+            <input value={form.icon} onChange={e => setForm({ ...form, icon: e.target.value })} maxLength="4" placeholder="👥" className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none text-center text-xl" />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Sichtbarkeit</label>
+            <select value={form.privacy} onChange={e => setForm({ ...form, privacy: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none">
+              <option value="public">🌐 Öffentlich</option>
+              <option value="private">🔒 Privat (Beitritt per Anfrage)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Beschreibung</label>
+          <textarea rows="4" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="w-full bg-dark-100 text-white p-3 rounded-xl border border-dark-100 focus:border-red-500 outline-none resize-none" />
+        </div>
+
+        <div>
+          <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Cover-Bild</label>
+          <input type="file" accept="image/*" onChange={e => setFile(e.target.files[0])} className="w-full text-gray-400 text-sm" />
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button type="button" onClick={() => navigate(-1)} className="flex-1 bg-dark-100 hover:bg-dark-300 text-white py-3 rounded-xl font-bold transition">Abbrechen</button>
+          <button type="submit" disabled={loading} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold transition disabled:opacity-50">
+            {loading ? 'Speichere...' : isEdit ? 'Speichern' : 'Gruppe erstellen'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function ForumPage() {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -3316,6 +3628,10 @@ export default function App() {
                       <Route path="/events/new" element={<EventEditPage />} />
                       <Route path="/events/edit/:id" element={<EventEditPage />} />
                       <Route path="/events/:id" element={<EventDetailPage />} />
+                      <Route path="/groups" element={<GroupsPage />} />
+                      <Route path="/groups/new" element={<GroupEditPage />} />
+                      <Route path="/groups/:slug/edit" element={<GroupEditPage />} />
+                      <Route path="/groups/:slug" element={<GroupDetailPage />} />
                       <Route path="/saved" element={<SavedPostsPage />} />
                       <Route path="/admin" element={<AdminPage />} />
                     </Routes>

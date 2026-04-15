@@ -1,6 +1,6 @@
 # Sneaks & Socks Club - Session Summary
 **Datum:** 2026-04-15
-**Letzter Commit:** b6dca3d
+**Letzter Commit:** 585606c
 
 ## Projekt-Übersicht
 Social Media Plattform für Sneaker- und Socken-Enthusiasten.
@@ -278,6 +278,79 @@ cd backend && node server.js
 cd frontend && npm run dev
 ```
 
+### 18. Profil-Statistiken
+- `/api/users/:id/stats`: posts, followers, following, erhaltene Likes/Kommentare/Reaktionen, Forum-Topics/Replies, Profilaufrufe, member_since
+- Statistik-Box im Profil
+
+### 19. Infinite Scroll
+- `useInfiniteList(buildUrl, deps)` Hook mit IntersectionObserver, PAGE_SIZE=20
+- Paginierung auf `/api/posts` (mit `WHERE group_id IS NULL`) und `/api/forum/topics` via `LIMIT/OFFSET`
+
+### 20. Dark/Light-Mode
+- `useTheme` Hook mit localStorage + `html.light` Klasse
+- CSS-Overrides in `index.css` für `bg-dark-*`, `text-white`, `text-gray-*`
+- Toggle-Button in Navbar
+
+### 21. E-Mail-Verifizierung + Passwort-Reset
+- Nodemailer mit SMTP-Env (SMTP_HOST=smtp.web.de, Port 587), Fallback auf Console-Log
+- Spalten: `email_verified`, `verification_token`, `reset_token`, `reset_expires`
+- Routes: `/api/auth/verify-email`, `/resend-verification`, `/forgot-password`, `/reset-password`
+- Seiten: `VerifyEmailPage`, `ForgotPasswordPage`, `ResetPasswordPage`, `VerifyEmailBanner`
+
+### 22. DSGVO-Datenexport
+- `buildUserExport(userId)` sammelt alle Nutzerdaten
+- `/api/profile/export` (JSON), `/api/profile/export/zip` (ZIP mit Bildern via archiver)
+- `DataExportBox` Komponente im eigenen Profil
+- Enthält: listings, events_created, event_attendance, groups_owned, group_memberships
+
+### 23. Marktplatz
+- Tabellen: `listings`, `listing_images`
+- Kategorien: sneakers, socks, apparel, accessories, other
+- Conditions: 4 Stufen; Status: active, reserved, sold
+- Bis zu 5 Bilder pro Listing
+- Seiten: `MarketPage`, `MarketDetailPage`, `MarketEditPage`
+
+### 24. Event-Kalender
+- Tabellen: `events`, `event_attendees`
+- Typen: meetup, release, drop, other
+- RSVP: going / interested
+- Seiten: `EventsPage`, `EventDetailPage`, `EventEditPage`
+
+### 25. Gruppen/Communities
+- Tabellen: `groups`, `group_members`, `posts.group_id`
+- Öffentlich/Privat mit Owner-Approval-Flow, Slugify-Helper
+- Seiten: `GroupsPage`, `GroupDetailPage`, `GroupEditPage`
+
+### 26. Footer (fixed)
+- `Footer` Komponente: schwarz, fixed bottom, Logo links, Links zu legal pages
+- Legal-Content-Objekt: impressum, datenschutz, cookies, agb, dsgvo
+- Footer-Text: "Powered by IT MEDIA DESIGN Gutberg (c) 2026"
+- Main-Padding `pb-40 sm:pb-28` wegen fixed footer
+
+### 27. Navbar-Logo
+- Text-Brand durch Login-Logo ersetzt (`<img src="/logo.png" className="h-14 sm:h-16" />`)
+- Navbar-Höhe h-20 (vorher h-14)
+
+### 28. Stories (24h-Posts)
+- Tabellen: `stories` (expires_at +24h), `story_views`
+- `setInterval` Cleanup stündlich
+- `StoryBar` + `StoryViewer` auf HomePage
+- Eigene Tile: Klick auf Kreis öffnet Viewer (wenn Stories vorhanden), separater `+`-Overlay-Button für Upload
+- Viewer-Tracking pro User
+
+## Umgebungsvariablen (Backend)
+```
+SMTP_HOST=smtp.web.de
+SMTP_PORT=587
+SMTP_USER=...
+SMTP_PASS=...
+SMTP_FROM=...
+APP_URL=http://37.27.209.32:3000
+```
+
+## PM2 Ecosystem
+- Datei: `/opt/sneaks-and-socks-club/ecosystem.config.cjs` (MUSS `.cjs` sein, da frontend/package.json `"type":"module"` hat)
+
 ## Erledigte Punkte (ehemals offen)
 - [x] Bilder-Komprimierung beim Upload (Sharp / WebP)
 - [x] Admin-Panel
@@ -285,6 +358,33 @@ cd frontend && npm run dev
 - [x] Emoji-Reaktionen
 - [x] @Mentions in Posts/Replies
 - [x] In-App Benachrichtigungen (Follow/Like/Kommentar/Reply/Message)
+- [x] Profil-Statistiken
+- [x] Infinite Scroll (Feed + Forum)
+- [x] Dark/Light-Toggle
+- [x] E-Mail-Verifizierung + Passwort-Reset
+- [x] DSGVO-Datenexport (JSON + ZIP)
+- [x] Marktplatz mit Listings/Bildern/Status
+- [x] Event-Kalender (Meetups/Releases/Drops)
+- [x] Gruppen/Communities (public/private)
+- [x] Fixed Footer mit Legal Pages
+- [x] Logo in Navbar statt Text
+- [x] Stories (24h-Posts) mit Viewer-Tracking
 
 ## Offene Punkte / Ideen für später
-- [ ] Echte Push-Benachrichtigungen (Browser/Mobile, aktuell nur in-app)
+- [ ] Echte Push-Benachrichtigungen (Browser/Mobile)
+- [ ] Ungelesen-Badge für Notifications
+- [ ] Link-Preview (OpenGraph)
+- [ ] Drafts (localStorage)
+- [ ] Keyboard-Shortcuts
+- [ ] Passwort-ändern-Dialog im Profil
+- [ ] Tag-System
+- [ ] Bessere Suche (FTS5)
+- [ ] Blockieren/Stummschalten
+- [ ] 2FA
+- [ ] Video-Uploads
+- [ ] PostgreSQL Migration
+- [ ] S3/MinIO
+- [ ] WebSockets (Realtime Chat)
+- [ ] Mobile App
+- [ ] Monetarisierung
+- [ ] KI-Moderation

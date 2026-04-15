@@ -772,6 +772,180 @@ function useInfiniteList(buildUrl, deps = []) {
   return { items, setItems, loading, hasMore, sentinelRef, reload };
 }
 
+// --- STORIES ---
+function StoryBar() {
+  const apiFetch = useApi();
+  const { user } = useAuth();
+  const [stories, setStories] = useState([]);
+  const [viewerIdx, setViewerIdx] = useState(null);
+  const fileRef = useRef(null);
+
+  const load = () => apiFetch('/api/stories').then(setStories).catch(() => {});
+  useEffect(() => { load() }, []);
+
+  const upload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const caption = prompt('Beschriftung (optional):') || '';
+    const fd = new FormData();
+    fd.append('image', file);
+    fd.append('caption', caption);
+    try { await apiFetch('/api/stories', { method: 'POST', body: fd }); load(); }
+    catch (err) { alert('Fehler'); }
+    e.target.value = '';
+  };
+
+  const hasOwn = stories.length > 0 && stories[0].user_id === user?.id;
+
+  return (
+    <>
+      <div className="flex gap-3 overflow-x-auto pb-3 mb-4 scrollbar-hide">
+        {/* Own upload tile */}
+        <button onClick={() => fileRef.current?.click()} className="flex flex-col items-center gap-1.5 flex-shrink-0 group">
+          <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-dark-100 border-2 border-dashed border-gray-500 flex items-center justify-center group-hover:border-red-500 transition">
+            {hasOwn ? (
+              <img src={getImageUrl(stories[0].stories[0].image)} className="w-full h-full object-cover rounded-full" />
+            ) : (
+              <span className="text-2xl text-gray-400">+</span>
+            )}
+            <span className="absolute bottom-0 right-0 w-6 h-6 bg-red-600 rounded-full flex items-center justify-center text-white text-sm border-2 border-dark-200">+</span>
+          </div>
+          <span className="text-xs text-gray-400 truncate max-w-[80px]">Deine Story</span>
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={upload} />
+
+        {stories.filter(s => s.user_id !== user?.id).map((s, i) => {
+          const allViewed = s.stories.every(st => st.viewed);
+          const realIdx = stories.findIndex(x => x.user_id === s.user_id);
+          return (
+            <button key={s.user_id} onClick={() => setViewerIdx(realIdx)} className="flex flex-col items-center gap-1.5 flex-shrink-0 group">
+              <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full p-0.5 ${allViewed ? 'bg-gray-600' : 'bg-gradient-to-tr from-red-500 via-pink-500 to-yellow-500'}`}>
+                <div className="w-full h-full rounded-full bg-dark-100 p-0.5">
+                  {s.avatar ? <img src={getImageUrl(s.avatar)} className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full rounded-full bg-red-950 flex items-center justify-center text-red-400 font-bold">{s.username[0].toUpperCase()}</div>}
+                </div>
+              </div>
+              <span className="text-xs text-gray-400 truncate max-w-[80px]">{s.username}</span>
+            </button>
+          );
+        })}
+      </div>
+      {viewerIdx !== null && (
+        <StoryViewer
+          userStories={stories}
+          startUserIdx={viewerIdx}
+          onClose={() => { setViewerIdx(null); load(); }}
+        />
+      )}
+    </>
+  );
+}
+
+function StoryViewer({ userStories, startUserIdx, onClose }) {
+  const apiFetch = useApi();
+  const { user } = useAuth();
+  const [userIdx, setUserIdx] = useState(startUserIdx);
+  const [storyIdx, setStoryIdx] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [viewers, setViewers] = useState(null);
+  const DURATION = 5000;
+
+  const current = userStories[userIdx];
+  const story = current?.stories[storyIdx];
+  const isOwn = current?.user_id === user?.id;
+
+  useEffect(() => {
+    if (!story) return;
+    apiFetch(`/api/stories/${story.id}/view`, { method: 'POST' }).catch(() => {});
+    setProgress(0);
+    setViewers(null);
+    const start = Date.now();
+    const iv = setInterval(() => {
+      const p = (Date.now() - start) / DURATION;
+      if (p >= 1) { clearInterval(iv); next(); }
+      else setProgress(p);
+    }, 50);
+    return () => clearInterval(iv);
+  }, [userIdx, storyIdx]);
+
+  const next = () => {
+    if (!current) return;
+    if (storyIdx < current.stories.length - 1) setStoryIdx(storyIdx + 1);
+    else if (userIdx < userStories.length - 1) { setUserIdx(userIdx + 1); setStoryIdx(0); }
+    else onClose();
+  };
+  const prev = () => {
+    if (storyIdx > 0) setStoryIdx(storyIdx - 1);
+    else if (userIdx > 0) {
+      const prevUser = userStories[userIdx - 1];
+      setUserIdx(userIdx - 1);
+      setStoryIdx(prevUser.stories.length - 1);
+    }
+  };
+
+  const loadViewers = async () => {
+    try { setViewers(await apiFetch(`/api/stories/${story.id}/viewers`)); } catch {}
+  };
+
+  const deleteStory = async () => {
+    if (!confirm('Story löschen?')) return;
+    try { await apiFetch(`/api/stories/${story.id}`, { method: 'DELETE' }); onClose(); }
+    catch { alert('Fehler'); }
+  };
+
+  if (!story) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black z-[60] flex items-center justify-center" onClick={onClose}>
+      <div className="relative w-full h-full sm:max-w-md sm:max-h-[90vh] bg-black sm:rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Progress bars */}
+        <div className="absolute top-2 left-2 right-2 flex gap-1 z-10">
+          {current.stories.map((_, i) => (
+            <div key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
+              <div className="h-full bg-white rounded-full transition-[width]" style={{ width: i < storyIdx ? '100%' : i === storyIdx ? `${progress * 100}%` : '0%' }} />
+            </div>
+          ))}
+        </div>
+        {/* Header */}
+        <div className="absolute top-6 left-2 right-2 flex items-center gap-2 z-10">
+          <div className="w-8 h-8 rounded-full bg-red-950 flex items-center justify-center overflow-hidden">
+            {current.avatar ? <img src={getImageUrl(current.avatar)} className="w-full h-full object-cover" /> : <span className="text-red-400 text-xs font-bold">{current.username[0].toUpperCase()}</span>}
+          </div>
+          <span className="text-white text-sm font-bold flex-1 truncate">{current.display_name || current.username}</span>
+          <span className="text-white/60 text-xs">{new Date(story.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</span>
+          {isOwn && <button onClick={deleteStory} className="text-white/80 hover:text-red-400 text-lg">🗑️</button>}
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl">×</button>
+        </div>
+        {/* Image */}
+        <img src={getImageUrl(story.image)} className="w-full h-full object-contain" />
+        {/* Caption */}
+        {story.caption && <p className="absolute bottom-16 left-4 right-4 text-white text-center drop-shadow-lg bg-black/40 rounded-lg p-2 text-sm">{story.caption}</p>}
+        {/* Tap zones */}
+        <button onClick={prev} className="absolute top-16 bottom-12 left-0 w-1/3" aria-label="Previous" />
+        <button onClick={next} className="absolute top-16 bottom-12 right-0 w-1/3" aria-label="Next" />
+        {/* Own viewers footer */}
+        {isOwn && (
+          <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-3">
+            {viewers === null ? (
+              <button onClick={loadViewers} className="text-white/70 text-xs hover:text-white">👁 Betrachter anzeigen</button>
+            ) : (
+              <div>
+                <p className="text-white text-xs mb-2">👁 {viewers.length} Betrachter</p>
+                <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+                  {viewers.map(v => (
+                    <div key={v.id} title={v.username} className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-white/20">
+                      {v.avatar ? <img src={getImageUrl(v.avatar)} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-red-950 flex items-center justify-center text-[10px] text-red-400 font-bold">{v.username[0].toUpperCase()}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- HOME PAGE (Nur noch Feed) ---
 function HomePage() {
   const { items: posts, loading, hasMore, sentinelRef, reload } = useInfiniteList(
@@ -780,6 +954,7 @@ function HomePage() {
 
   return (
     <div className="max-w-xl mx-auto py-4 sm:py-8 px-3 sm:px-4">
+      <StoryBar />
       <h2 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-6">Dein Feed</h2>
       {!loading && posts.length === 0 ? (
         <div className="text-center bg-dark-200 p-6 sm:p-10 rounded-xl sm:rounded-2xl border border-dark-100">

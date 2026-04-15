@@ -220,6 +220,24 @@ db.exec(`
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS stories (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    image TEXT NOT NULL,
+    caption TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE TABLE IF NOT EXISTS story_views (
+    id TEXT PRIMARY KEY,
+    story_id TEXT NOT NULL,
+    viewer_id TEXT NOT NULL,
+    viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(story_id, viewer_id),
+    FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE,
+    FOREIGN KEY (viewer_id) REFERENCES users(id)
+  );
   CREATE TABLE IF NOT EXISTS event_attendees (
     id TEXT PRIMARY KEY,
     event_id TEXT NOT NULL,
@@ -1089,6 +1107,86 @@ app.delete('/api/market/listings/:id/images/:imgId', authenticateToken, (req, re
   db.prepare('DELETE FROM listing_images WHERE id = ? AND listing_id = ?').run(req.params.imgId, req.params.id);
   res.json({ ok: true });
 });
+
+// --- STORIES ROUTES ---
+app.get('/api/stories', authenticateToken, (req, res) => {
+  // Active stories grouped by user, each user's stories in chronological order
+  const now = new Date().toISOString();
+  const rows = db.prepare(`
+    SELECT s.*, u.username, u.display_name, u.avatar,
+    (SELECT 1 FROM story_views WHERE story_id = s.id AND viewer_id = ?) as viewed
+    FROM stories s JOIN users u ON s.user_id = u.id
+    WHERE s.expires_at > ?
+    ORDER BY s.user_id, s.created_at ASC
+  `).all(req.user.id, now);
+  // Group by user, with own stories first
+  const byUser = new Map();
+  for (const r of rows) {
+    if (!byUser.has(r.user_id)) byUser.set(r.user_id, {
+      user_id: r.user_id, username: r.username, display_name: r.display_name, avatar: r.avatar, stories: []
+    });
+    byUser.get(r.user_id).stories.push({
+      id: r.id, image: r.image, caption: r.caption, created_at: r.created_at, expires_at: r.expires_at, viewed: !!r.viewed
+    });
+  }
+  const list = Array.from(byUser.values());
+  list.sort((a, b) => {
+    if (a.user_id === req.user.id) return -1;
+    if (b.user_id === req.user.id) return 1;
+    const aAll = a.stories.every(s => s.viewed);
+    const bAll = b.stories.every(s => s.viewed);
+    if (aAll !== bAll) return aAll ? 1 : -1;
+    return 0;
+  });
+  res.json(list);
+});
+
+app.post('/api/stories', authenticateToken, upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Bild erforderlich' });
+  try {
+    const image = await saveFileLocally(req.file.buffer, req.file.originalname, false);
+    const id = uuidv4();
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    db.prepare('INSERT INTO stories (id, user_id, image, caption, expires_at) VALUES (?, ?, ?, ?, ?)').run(id, req.user.id, image, req.body.caption || '', expires);
+    res.json({ id, image, expires_at: expires });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Fehler' }); }
+});
+
+app.post('/api/stories/:id/view', authenticateToken, (req, res) => {
+  const story = db.prepare('SELECT user_id FROM stories WHERE id = ?').get(req.params.id);
+  if (!story) return res.status(404).json({ error: 'Not found' });
+  if (story.user_id === req.user.id) return res.json({ ok: true });
+  try {
+    db.prepare('INSERT OR IGNORE INTO story_views (id, story_id, viewer_id) VALUES (?, ?, ?)').run(uuidv4(), req.params.id, req.user.id);
+  } catch {}
+  res.json({ ok: true });
+});
+
+app.get('/api/stories/:id/viewers', authenticateToken, (req, res) => {
+  const story = db.prepare('SELECT user_id FROM stories WHERE id = ?').get(req.params.id);
+  if (!story) return res.status(404).json({ error: 'Not found' });
+  if (story.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+  const viewers = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, v.viewed_at
+    FROM story_views v JOIN users u ON u.id = v.viewer_id
+    WHERE v.story_id = ? ORDER BY v.viewed_at DESC
+  `).all(req.params.id);
+  res.json(viewers);
+});
+
+app.delete('/api/stories/:id', authenticateToken, (req, res) => {
+  const story = db.prepare('SELECT user_id FROM stories WHERE id = ?').get(req.params.id);
+  if (!story) return res.status(404).json({ error: 'Not found' });
+  const isAdmin = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id)?.is_admin;
+  if (story.user_id !== req.user.id && !isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+  db.prepare('DELETE FROM stories WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Cleanup expired stories hourly
+setInterval(() => {
+  try { db.prepare('DELETE FROM stories WHERE expires_at < ?').run(new Date().toISOString()); } catch {}
+}, 60 * 60 * 1000);
 
 // --- EVENTS ROUTES ---
 const EVENT_TYPES = [

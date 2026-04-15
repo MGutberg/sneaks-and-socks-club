@@ -3699,7 +3699,7 @@ function LegalPage() {
 
 function Footer() {
   return (
-    <footer className="bg-black border-t border-dark-100 mt-8">
+    <footer className="bg-black border-t border-dark-100 fixed bottom-0 left-0 right-0 z-40">
       <div className="max-w-6xl mx-auto px-4 py-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
         <Link to="/" className="flex-shrink-0">
           <img src="/logo.png" alt="Sneaks & Socks Club" className="h-12 sm:h-14 w-auto object-contain" />
@@ -3743,7 +3743,7 @@ export default function App() {
                 <div className="flex flex-col min-h-screen">
                   <Navbar />
                   <VerifyEmailBanner />
-                  <main className="flex-1">
+                  <main className="flex-1 pb-40 sm:pb-28">
                     <Routes>
                       <Route path="/" element={<HomePage />} />
                       <Route path="/create-post" element={<CreatePostPage />} />

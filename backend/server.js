@@ -1710,16 +1710,50 @@ app.put('/api/admin/users/:id/toggle-admin', authenticateAdmin, (req, res) => {
 
 app.delete('/api/admin/users/:id', authenticateAdmin, (req, res) => {
   if (req.params.id === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
-  db.prepare('DELETE FROM likes WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM comments WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM reactions WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM follows WHERE follower_id = ? OR following_id = ?').run(req.params.id, req.params.id);
-  db.prepare('DELETE FROM messages WHERE sender_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM forum_replies WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM forum_topics WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM posts WHERE user_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+  const uid = req.params.id;
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(uid);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const safe = (sql, ...params) => { try { db.prepare(sql).run(...params); } catch (e) { console.warn('[admin/delete-user]', sql, e.message); } };
+  try {
+    const tx = db.transaction(() => {
+      safe('DELETE FROM likes WHERE user_id = ?', uid);
+      safe('DELETE FROM comments WHERE user_id = ?', uid);
+      safe('DELETE FROM reactions WHERE user_id = ?', uid);
+      safe('DELETE FROM follows WHERE follower_id = ? OR following_id = ?', uid, uid);
+      safe('DELETE FROM saved_posts WHERE user_id = ?', uid);
+      safe('DELETE FROM profile_gallery WHERE user_id = ?', uid);
+      safe('DELETE FROM profile_views WHERE profile_id = ? OR viewer_id = ?', uid, uid);
+      safe('DELETE FROM reports WHERE reporter_id = ?', uid);
+      safe('DELETE FROM notifications WHERE user_id = ? OR actor_id = ?', uid, uid);
+      safe('DELETE FROM story_views WHERE viewer_id = ?', uid);
+      safe('DELETE FROM stories WHERE user_id = ?', uid);
+      safe('DELETE FROM event_attendees WHERE user_id = ?', uid);
+      safe('DELETE FROM events WHERE user_id = ?', uid);
+      safe('DELETE FROM group_members WHERE user_id = ?', uid);
+      safe(`DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE owner_id = ?)`, uid);
+      safe(`DELETE FROM posts WHERE group_id IN (SELECT id FROM groups WHERE owner_id = ?)`, uid);
+      safe('DELETE FROM groups WHERE owner_id = ?', uid);
+      safe(`DELETE FROM listing_images WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?)`, uid);
+      safe('DELETE FROM listings WHERE user_id = ?', uid);
+      safe('DELETE FROM messages WHERE sender_id = ?', uid);
+      safe(`DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user1_id = ? OR user2_id = ?)`, uid, uid);
+      safe('DELETE FROM conversations WHERE user1_id = ? OR user2_id = ?', uid, uid);
+      safe(`DELETE FROM forum_replies WHERE topic_id IN (SELECT id FROM forum_topics WHERE user_id = ?)`, uid);
+      safe('DELETE FROM forum_replies WHERE user_id = ?', uid);
+      safe('DELETE FROM forum_topics WHERE user_id = ?', uid);
+      safe(`DELETE FROM likes WHERE post_id IN (SELECT id FROM posts WHERE user_id = ?)`, uid);
+      safe(`DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE user_id = ?)`, uid);
+      safe(`DELETE FROM reactions WHERE post_id IN (SELECT id FROM posts WHERE user_id = ?)`, uid);
+      safe(`DELETE FROM saved_posts WHERE post_id IN (SELECT id FROM posts WHERE user_id = ?)`, uid);
+      safe('DELETE FROM posts WHERE user_id = ?', uid);
+      db.prepare('DELETE FROM users WHERE id = ?').run(uid);
+    });
+    tx();
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[admin/delete-user] failed:', e);
+    res.status(500).json({ error: 'Delete failed: ' + e.message });
+  }
 });
 
 app.get('/api/admin/posts', authenticateAdmin, (req, res) => {

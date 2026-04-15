@@ -800,18 +800,29 @@ function StoryBar() {
   return (
     <>
       <div className="flex gap-3 overflow-x-auto pb-3 mb-4 scrollbar-hide">
-        {/* Own upload tile */}
-        <button onClick={() => fileRef.current?.click()} className="flex flex-col items-center gap-1.5 flex-shrink-0 group">
-          <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-dark-100 border-2 border-dashed border-gray-500 flex items-center justify-center group-hover:border-red-500 transition">
-            {hasOwn ? (
-              <img src={getImageUrl(stories[0].stories[0].image)} className="w-full h-full object-cover rounded-full" />
-            ) : (
-              <span className="text-2xl text-gray-400">+</span>
-            )}
-            <span className="absolute bottom-0 right-0 w-6 h-6 bg-red-600 rounded-full flex items-center justify-center text-white text-sm border-2 border-dark-200">+</span>
-          </div>
+        {/* Own tile: click = view (if exists), separate + button uploads */}
+        <div className="flex flex-col items-center gap-1.5 flex-shrink-0 relative">
+          <button
+            onClick={() => hasOwn ? setViewerIdx(0) : fileRef.current?.click()}
+            className="group"
+          >
+            <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full ${hasOwn ? 'p-0.5 bg-gradient-to-tr from-red-500 via-pink-500 to-yellow-500' : 'border-2 border-dashed border-gray-500 group-hover:border-red-500 transition flex items-center justify-center bg-dark-100'}`}>
+              {hasOwn ? (
+                <div className="w-full h-full rounded-full bg-dark-100 p-0.5">
+                  <img src={getImageUrl(stories[0].stories[0].image)} className="w-full h-full object-cover rounded-full" />
+                </div>
+              ) : (
+                <span className="text-2xl text-gray-400">+</span>
+              )}
+            </div>
+          </button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="absolute top-12 sm:top-14 right-0 w-6 h-6 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white text-sm border-2 border-dark-200 transition"
+            title="Neue Story hochladen"
+          >+</button>
           <span className="text-xs text-gray-400 truncate max-w-[80px]">Deine Story</span>
-        </button>
+        </div>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={upload} />
 
         {stories.filter(s => s.user_id !== user?.id).map((s, i) => {

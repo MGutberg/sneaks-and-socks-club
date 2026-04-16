@@ -11,6 +11,7 @@ const sharp = require('sharp');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const archiver = require('archiver');
+const webpush = require('web-push');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -282,11 +283,68 @@ try { db.exec("ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL;"); } 
 try { db.exec("ALTER TABLE users ADD COLUMN reset_expires DATETIME DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE posts ADD COLUMN group_id TEXT DEFAULT NULL;"); } catch (e) {}
 
+// --- PUSH SUBSCRIPTIONS ---
+db.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+)`);
+
+// --- VAPID / WEB PUSH ---
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:deepvoiceinc@web.de';
+let pushEnabled = false;
+if (VAPID_PUBLIC && VAPID_PRIVATE) {
+  try {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+    pushEnabled = true;
+    console.log('[webpush] VAPID configured');
+  } catch (e) { console.error('[webpush] VAPID setup failed:', e.message); }
+} else {
+  console.log('[webpush] Disabled (no VAPID keys). Generate with: npx web-push generate-vapid-keys');
+}
+
+const sendPushToUser = (userId, payload) => {
+  if (!pushEnabled) return;
+  const subs = db.prepare('SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?').all(userId);
+  for (const s of subs) {
+    const sub = { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } };
+    webpush.sendNotification(sub, JSON.stringify(payload)).catch(err => {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(s.id);
+      } else {
+        console.warn('[webpush] send error', err.statusCode, err.body);
+      }
+    });
+  }
+};
+
 // --- NOTIFICATION HELPER ---
 const notify = (userId, type, actorId, contentId = null) => {
   if (userId === actorId) return; // keine Selbst-Benachrichtigungen
   try {
     db.prepare('INSERT INTO notifications (id, user_id, type, actor_id, content_id) VALUES (?, ?, ?, ?, ?)').run(uuidv4(), userId, type, actorId, contentId);
+    const actor = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(actorId);
+    const who = actor?.display_name || actor?.username || 'Jemand';
+    const titles = { follow: 'Neuer Follower', like: 'Neues Like', comment: 'Neuer Kommentar', reply: 'Neue Antwort', message: 'Neue Nachricht' };
+    const bodies = {
+      follow: `${who} folgt dir jetzt`,
+      like: `${who} hat deinen Post geliked`,
+      comment: `${who} hat deinen Post kommentiert`,
+      reply: `${who} hat auf dein Thema geantwortet`,
+      message: `${who} hat dir eine Nachricht geschickt`,
+    };
+    sendPushToUser(userId, {
+      title: titles[type] || 'Sneaks & Socks Club',
+      body: bodies[type] || 'Neue Aktivität',
+      url: type === 'message' ? '/messages' : '/notifications',
+      tag: `${type}-${contentId || actorId}`,
+    });
   } catch (e) { console.error('notify error', e); }
 };
 
@@ -1695,6 +1753,31 @@ app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
   res.json({ userCount, postCount, topicCount, messageCount, commentCount, onlineCount });
 });
 
+// --- PUSH SUBSCRIPTION ROUTES ---
+app.get('/api/push/vapid-key', (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC });
+});
+
+app.post('/api/push/subscribe', authenticateToken, (req, res) => {
+  const { endpoint, keys } = req.body;
+  if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ error: 'Invalid subscription' });
+  const existing = db.prepare('SELECT id FROM push_subscriptions WHERE endpoint = ?').get(endpoint);
+  if (existing) {
+    db.prepare('UPDATE push_subscriptions SET user_id = ?, p256dh = ?, auth = ? WHERE id = ?').run(req.user.id, keys.p256dh, keys.auth, existing.id);
+  } else {
+    db.prepare('INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth) VALUES (?, ?, ?, ?, ?)').run(uuidv4(), req.user.id, endpoint, keys.p256dh, keys.auth);
+  }
+  res.json({ success: true });
+});
+
+app.delete('/api/push/subscribe', authenticateToken, (req, res) => {
+  const { endpoint } = req.body;
+  if (endpoint) {
+    db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, req.user.id);
+  }
+  res.json({ success: true });
+});
+
 app.get('/api/admin/users', authenticateAdmin, (req, res) => {
   const users = db.prepare('SELECT id, username, display_name, email, avatar, bio, is_admin, created_at, last_active FROM users ORDER BY created_at DESC').all();
   res.json(users);
@@ -1738,6 +1821,7 @@ app.delete('/api/admin/users/:id', authenticateAdmin, (req, res) => {
       safe('DELETE FROM messages WHERE sender_id = ?', uid);
       safe(`DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user1_id = ? OR user2_id = ?)`, uid, uid);
       safe('DELETE FROM conversations WHERE user1_id = ? OR user2_id = ?', uid, uid);
+      safe('DELETE FROM push_subscriptions WHERE user_id = ?', uid);
       safe(`DELETE FROM forum_replies WHERE topic_id IN (SELECT id FROM forum_topics WHERE user_id = ?)`, uid);
       safe('DELETE FROM forum_replies WHERE user_id = ?', uid);
       safe('DELETE FROM forum_topics WHERE user_id = ?', uid);

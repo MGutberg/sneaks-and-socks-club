@@ -72,6 +72,71 @@ function useApi() {
   }
 }
 
+// --- PUSH NOTIFICATIONS ---
+function usePushNotifications() {
+  const { token } = useAuth();
+  const [permission, setPermission] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
+  const [subscribed, setSubscribed] = useState(false);
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window;
+
+  useEffect(() => {
+    if (!supported || !token) return;
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      reg.pushManager.getSubscription().then(sub => setSubscribed(!!sub));
+    }).catch(() => {});
+  }, [token]);
+
+  const subscribe = async () => {
+    if (!supported) return;
+    const perm = await Notification.requestPermission();
+    setPermission(perm);
+    if (perm !== 'granted') return;
+    try {
+      const res = await fetch(`${API_URL}/api/push/vapid-key`);
+      const { publicKey } = await res.json();
+      if (!publicKey) return;
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userNotificationOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      const p256dh = btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh'))));
+      const auth = btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth'))));
+      await fetch(`${API_URL}/api/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh, auth } }),
+      });
+      setSubscribed(true);
+    } catch (e) { console.error('Push subscribe error', e); }
+  };
+
+  const unsubscribe = async () => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch(`${API_URL}/api/push/subscribe`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      setSubscribed(false);
+    } catch (e) { console.error('Push unsubscribe error', e); }
+  };
+
+  return { supported, permission, subscribed, subscribe, unsubscribe };
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
 // --- NOTIFICATION ITEM ---
 function NotifItem({ n, onClose }) {
   const navigate = useNavigate();
@@ -134,6 +199,7 @@ function Navbar() {
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const { theme, toggle: toggleTheme } = useTheme();
+  const push = usePushNotifications();
 
   const loadNotifications = async () => {
     try {
@@ -242,6 +308,16 @@ function Navbar() {
                 </div>
               )}
             </div>
+
+            {/* Push Notification Toggle */}
+            {push.supported && (
+              <button
+                onClick={push.subscribed ? push.unsubscribe : push.subscribe}
+                className={`transition p-2 ${push.subscribed ? 'text-green-400 hover:text-green-300' : 'text-gray-400 hover:text-white'}`}
+                title={push.subscribed ? 'Push-Benachrichtigungen deaktivieren' : 'Push-Benachrichtigungen aktivieren'}>
+                <span className="text-xl">{push.subscribed ? '🔔' : '🔕'}</span>
+              </button>
+            )}
 
             {/* Theme Toggle */}
             <button onClick={toggleTheme} className="text-gray-400 hover:text-white transition p-2" title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}>

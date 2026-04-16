@@ -1,6 +1,6 @@
 # Sneaks & Socks Club - Session Summary
-**Datum:** 2026-04-15
-**Letzter Commit:** 585606c
+**Datum:** 2026-04-16
+**Letzter Commit:** d7c921a
 
 ## Projekt-Übersicht
 Social Media Plattform für Sneaker- und Socken-Enthusiasten.
@@ -198,6 +198,12 @@ id, post_id, user_id, emoji, created_at
 UNIQUE(post_id, user_id, emoji)
 ```
 
+### Push Subscriptions
+```sql
+id TEXT PRIMARY KEY, user_id TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE,
+p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at DATETIME
+```
+
 ### Reports
 ```sql
 id, reporter_id, content_type, content_id, reason, status, created_at
@@ -263,8 +269,9 @@ pm2 restart sneaks-backend
 ```
 
 ### URLs
-- Frontend: `http://37.27.209.32:3000`
-- Backend API: `http://37.27.209.32:5000/api/users`
+- Frontend: `https://sneaks-socks.club` (+ `https://www.sneaks-socks.club`)
+- Backend API: `https://sneaks-socks.club/api/users` (via Nginx Proxy)
+- Direkt: `http://37.27.209.32:3000` (Frontend), `http://37.27.209.32:5000` (Backend)
 
 ## Lokales Setup (neuer Rechner)
 ```bash
@@ -338,6 +345,28 @@ cd frontend && npm run dev
 - Eigene Tile: Klick auf Kreis öffnet Viewer (wenn Stories vorhanden), separater `+`-Overlay-Button für Upload
 - Viewer-Tracking pro User
 
+### 29. Web Push Notifications (VAPID / Service Worker)
+- `web-push` npm-Paket für serverseitige Push-Zustellung
+- VAPID-Konfiguration über Env-Vars: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+- Tabelle: `push_subscriptions` (user_id, endpoint, p256dh, auth)
+- `sendPushToUser(userId, payload)` — sendet an alle Subscriptions, löscht 404/410-Endpoints automatisch
+- `notify()` erweitert: sendet Push mit deutschen Labels (Neuer Follower, Neues Like, etc.)
+- Routes: `GET /api/push/vapid-key`, `POST /api/push/subscribe`, `DELETE /api/push/subscribe`
+- Service Worker: `frontend/public/sw.js` — empfängt Push-Events, zeigt Notification, navigiert bei Klick
+- `usePushNotifications()` Hook im Frontend: SW-Registrierung, Subscribe/Unsubscribe
+- Push-Toggle-Button in Navbar (🔔 grün = aktiv, 🔕 grau = inaktiv)
+
+### 30. Admin User-Deletion (Transaction Fix)
+- `DELETE /api/admin/users/:id` in Transaction mit `safe()` Helper
+- Bereinigt alle 24+ Tabellen inkl. Kaskaden (listing_images, group posts, etc.)
+
+## Domain & HTTPS
+- Domain: `sneaks-socks.club` (+ `www.sneaks-socks.club`)
+- DNS: A-Records bei IONOS → `37.27.209.32`
+- Let's Encrypt Zertifikat via Certbot (`--nginx --redirect`)
+- Automatische Erneuerung via `certbot renew` (systemd timer)
+- Nginx Reverse Proxy: Port 3000 (Frontend), Port 5000 (Backend)
+
 ## Umgebungsvariablen (Backend)
 ```
 SMTP_HOST=smtp.web.de
@@ -345,7 +374,10 @@ SMTP_PORT=587
 SMTP_USER=...
 SMTP_PASS=...
 SMTP_FROM=...
-APP_URL=http://37.27.209.32:3000
+APP_URL=https://sneaks-socks.club
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:deepvoiceinc@web.de
 ```
 
 ## PM2 Ecosystem
@@ -369,9 +401,11 @@ APP_URL=http://37.27.209.32:3000
 - [x] Fixed Footer mit Legal Pages
 - [x] Logo in Navbar statt Text
 - [x] Stories (24h-Posts) mit Viewer-Tracking
+- [x] Web Push Notifications (VAPID / Service Worker)
+- [x] Admin User-Deletion Fix (Transaction über alle Tabellen)
+- [x] Domain sneaks-socks.club + HTTPS (Let's Encrypt + Nginx)
 
 ## Offene Punkte / Ideen für später
-- [ ] Echte Push-Benachrichtigungen (Browser/Mobile)
 - [ ] Ungelesen-Badge für Notifications
 - [ ] Link-Preview (OpenGraph)
 - [ ] Drafts (localStorage)

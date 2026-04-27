@@ -14,9 +14,17 @@ const archiver = require('archiver');
 const webpush = require('web-push');
 
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'sneaks-and-socks-club-secret-key-2024';
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+
+const buildLink = (req, path) => {
+  const origin = req.get('origin')
+    || (req.get('host') ? `${req.protocol}://${req.get('host')}` : null)
+    || APP_URL;
+  return `${origin}${path}`;
+};
 
 // --- MAILER ---
 let mailer = null;
@@ -374,7 +382,7 @@ app.post('/api/auth/register', async (req, res) => {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     db.prepare('INSERT INTO users (id, username, email, password, display_name, verification_token) VALUES (?, ?, ?, ?, ?, ?)').run(id, username, email, hashedPassword, display_name || username, verificationToken);
     const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '7d' });
-    const link = `${APP_URL}/verify-email?token=${verificationToken}`;
+    const link = buildLink(req, `/verify-email?token=${verificationToken}`);
     sendMail(email, 'Willkommen – E-Mail bestätigen',
       `<p>Hallo ${display_name || username},</p>
        <p>bitte bestätige deine E-Mail-Adresse für Sneaks & Socks Club:</p>
@@ -399,7 +407,7 @@ app.post('/api/auth/resend-verification', authenticateToken, (req, res) => {
   if (user.email_verified) return res.json({ ok: true, alreadyVerified: true });
   const verificationToken = crypto.randomBytes(32).toString('hex');
   db.prepare('UPDATE users SET verification_token = ? WHERE id = ?').run(verificationToken, user.id);
-  const link = `${APP_URL}/verify-email?token=${verificationToken}`;
+  const link = buildLink(req, `/verify-email?token=${verificationToken}`);
   sendMail(user.email, 'E-Mail bestätigen',
     `<p>Hallo ${user.display_name || user.username},</p>
      <p>hier ist dein neuer Bestätigungslink:</p>
@@ -415,7 +423,7 @@ app.post('/api/auth/forgot-password', (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     db.prepare('UPDATE users SET reset_token = ?, reset_expires = ? WHERE id = ?').run(token, expires, user.id);
-    const link = `${APP_URL}/reset-password?token=${token}`;
+    const link = buildLink(req, `/reset-password?token=${token}`);
     sendMail(email, 'Passwort zurücksetzen',
       `<p>Hallo ${user.display_name || user.username},</p>
        <p>du (oder jemand anderes) hat ein neues Passwort angefordert. Der Link ist 1 Stunde gültig:</p>

@@ -9,6 +9,22 @@ const getApiUrl = () => {
 const API_URL = getApiUrl();
 const getImageUrl = (path) => path ? (path.startsWith('http') ? path : `${API_URL}${path.startsWith('/') ? '' : '/'}${path}`) : null;
 
+const COMMON_TLD_TYPOS = { coom: 'com', con: 'com', cmo: 'com', comm: 'com', ogr: 'org', ney: 'net' };
+const COMMON_DOMAIN_TYPOS = {
+  'gmial.com': 'gmail.com', 'gmal.com': 'gmail.com', 'gnail.com': 'gmail.com', 'gmail.con': 'gmail.com',
+  'hotmial.com': 'hotmail.com', 'hotmai.com': 'hotmail.com', 'yhoo.com': 'yahoo.com', 'yahooo.com': 'yahoo.com',
+  'web.com': 'web.de', 'gmx.com': 'gmx.de', 'outlook.con': 'outlook.com',
+};
+function validateEmail(email) {
+  const v = (email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v)) return { valid: false, error: 'Bitte eine gültige Email-Adresse eingeben.' };
+  const domain = v.toLowerCase().split('@')[1];
+  if (COMMON_DOMAIN_TYPOS[domain]) return { valid: false, error: `Meintest du "${COMMON_DOMAIN_TYPOS[domain]}"?` };
+  const tld = domain.split('.').pop();
+  if (COMMON_TLD_TYPOS[tld]) return { valid: false, error: `Meintest du ".${COMMON_TLD_TYPOS[tld]}" statt ".${tld}"?` };
+  return { valid: true };
+}
+
 // --- THEME ---
 function useTheme() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -3442,8 +3458,13 @@ function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const submit = async (e) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault();
+    setError(null);
+    const check = validateEmail(email);
+    if (!check.valid) { setError(check.error); return; }
+    setLoading(true);
     try {
       await fetch(`${API_URL}/api/auth/forgot-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
       setDone(true);
@@ -3460,7 +3481,8 @@ function ForgotPasswordPage() {
       ) : (
         <form onSubmit={submit}>
           <p className="text-gray-400 text-sm mb-4">Gib deine E-Mail-Adresse ein, wir senden dir einen Reset-Link.</p>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="deine@mail.de" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500" />
+          <input type="email" value={email} onChange={e => { setEmail(e.target.value); setError(null); }} required placeholder="deine@mail.de" className="w-full mb-4 p-4 rounded-xl bg-dark-100 text-white border border-gray-700 outline-none focus:border-red-500" />
+          {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
           <button disabled={loading} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold disabled:opacity-60">{loading ? 'Sende...' : 'Link anfordern'}</button>
           <p className="text-center mt-4 text-sm"><Link to="/login" className="text-gray-500 hover:text-red-400">Zurück zum Login</Link></p>
         </form>
@@ -3564,7 +3586,12 @@ function LoginPage() {
 
 function RegisterPage() {
   const [f, setF] = useState({ u: '', e: '', p: '', d: '' }), { register } = useAuth(), nav = useNavigate();
-  const sub = async (e) => { e.preventDefault(); try { await register(f.u, f.e, f.p, f.d); nav('/'); } catch (err) { alert(err.message); } };
+  const sub = async (e) => {
+    e.preventDefault();
+    const check = validateEmail(f.e);
+    if (!check.valid) return alert(check.error);
+    try { await register(f.u, f.e, f.p, f.d); nav('/'); } catch (err) { alert(err.message); }
+  };
 
   return (
     <div className="flex items-center justify-center min-h-screen px-4 py-8" style={{ backgroundImage: `url('/streetart.png')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>

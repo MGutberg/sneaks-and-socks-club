@@ -248,8 +248,8 @@ function Navbar() {
       {/* Desktop & Mobile Header */}
       <div className="max-w-6xl mx-auto flex justify-between items-center h-20 px-4">
         <div className="flex items-center gap-4">
-          <Link to="/" className="flex items-center">
-            <img src="/logo.png" alt="Sneaks & Socks Club" className="h-14 sm:h-16 w-auto object-contain" />
+          <Link to="/" className="flex items-center flex-shrink-0">
+            <img src="/logo.png" alt="Sneaks & Socks Club" className="h-12 sm:h-16 w-auto object-contain" />
           </Link>
 
           {/* Online Counter & Nav Links - Desktop */}
@@ -266,7 +266,7 @@ function Navbar() {
             <Link to="/market" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">🛒 Markt</Link>
             <Link to="/events" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">📅 Events</Link>
             <Link to="/groups" className="text-gray-400 hover:text-white transition text-sm font-medium ml-3">👥 Gruppen</Link>
-            {user?.is_admin && <Link to="/admin" className="text-yellow-400 hover:text-yellow-300 transition text-sm font-bold ml-3">⚙️ Admin</Link>}
+            {!!user?.is_admin &&<Link to="/admin" className="text-yellow-400 hover:text-yellow-300 transition text-sm font-bold ml-3">⚙️ Admin</Link>}
           </div>
 
           {/* Search Input - Desktop */}
@@ -281,8 +281,8 @@ function Navbar() {
 
         {user && (
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Notifications Bell */}
-            <div className="relative">
+            {/* Notifications Bell - Desktop only (Mobile hat Hamburger-Badge) */}
+            <div className="relative hidden sm:flex">
               <button onClick={() => { setNotifOpen(!notifOpen); if (!notifOpen) markNotifsRead(); }}
                 className="relative text-gray-400 hover:text-white transition p-2" title="Benachrichtigungen">
                 <span className="text-xl">🔔</span>
@@ -313,19 +313,19 @@ function Navbar() {
             {push.supported && (
               <button
                 onClick={push.subscribed ? push.unsubscribe : push.subscribe}
-                className={`transition p-2 ${push.subscribed ? 'text-green-400 hover:text-green-300' : 'text-gray-400 hover:text-white'}`}
+                className={`hidden sm:inline-flex transition p-2 ${push.subscribed ? 'text-green-400 hover:text-green-300' : 'text-gray-400 hover:text-white'}`}
                 title={push.subscribed ? 'Push-Benachrichtigungen deaktivieren' : 'Push-Benachrichtigungen aktivieren'}>
                 <span className="text-xl">{push.subscribed ? '🔔' : '🔕'}</span>
               </button>
             )}
 
             {/* Theme Toggle */}
-            <button onClick={toggleTheme} className="text-gray-400 hover:text-white transition p-2" title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}>
+            <button onClick={toggleTheme} className="hidden sm:inline-flex text-gray-400 hover:text-white transition p-2" title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}>
               <span className="text-xl">{theme === 'dark' ? '☀️' : '🌙'}</span>
             </button>
 
             {/* Saved Posts Icon */}
-            <Link to="/saved" className="text-gray-400 hover:text-yellow-400 transition p-2" title="Gespeicherte Posts">
+            <Link to="/saved" className="hidden sm:inline-flex text-gray-400 hover:text-yellow-400 transition p-2" title="Gespeicherte Posts">
               <span className="text-xl">🔖</span>
             </Link>
 
@@ -355,8 +355,13 @@ function Navbar() {
             <button onClick={() => { logout(); navigate('/login') }} className="hidden sm:block text-gray-500 hover:text-red-400 text-sm font-medium transition">Logout</button>
 
             {/* Hamburger Menu - Mobile */}
-            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="sm:hidden p-2 text-white">
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="sm:hidden relative p-2 text-white">
               <span className="text-2xl">{mobileMenuOpen ? '✕' : '☰'}</span>
+              {!mobileMenuOpen && (unreadNotifs + unreadMessages) > 0 && (
+                <span className="absolute top-0 right-0 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  {(unreadNotifs + unreadMessages) > 9 ? '9+' : (unreadNotifs + unreadMessages)}
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -401,10 +406,15 @@ function Navbar() {
             <Link to="/saved" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl">
               <span>🔖</span> Gespeicherte Posts
             </Link>
-            {user?.is_admin && (
+            {!!user?.is_admin &&(
               <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 bg-yellow-900/40 text-yellow-400 px-4 py-3 rounded-xl font-bold border border-yellow-800">
                 <span>⚙️</span> Admin-Panel
               </Link>
+            )}
+            {push.supported && (
+              <button onClick={() => { push.subscribed ? push.unsubscribe() : push.subscribe(); }} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl text-left">
+                <span>{push.subscribed ? '🔔' : '🔕'}</span> {push.subscribed ? 'Push aktiv' : 'Push aktivieren'}
+              </button>
             )}
             <button onClick={() => { toggleTheme(); }} className="flex items-center gap-3 bg-dark-100 text-white px-4 py-3 rounded-xl text-left">
               <span>{theme === 'dark' ? '☀️' : '🌙'}</span> {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
@@ -3499,8 +3509,11 @@ function VerifyEmailPage() {
   const [params] = useSearchParams();
   const token = params.get('token');
   const [status, setStatus] = useState('loading');
+  const ranRef = useRef(false);
   useEffect(() => {
     if (!token) { setStatus('error'); return; }
+    if (ranRef.current) return;
+    ranRef.current = true;
     fetch(`${API_URL}/api/auth/verify-email`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
       .then(r => r.ok ? setStatus('ok') : setStatus('error'))
       .catch(() => setStatus('error'));
@@ -3962,11 +3975,11 @@ function LegalPage() {
 function Footer() {
   return (
     <footer className="bg-black border-t border-dark-100 fixed bottom-0 left-0 right-0 z-40">
-      <div className="max-w-6xl mx-auto px-4 py-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
+      <div className="max-w-6xl mx-auto px-4 py-3 sm:py-5 flex flex-col sm:flex-row items-center gap-2 sm:gap-8">
         <Link to="/" className="flex-shrink-0">
-          <img src="/logo.png" alt="Sneaks & Socks Club" className="h-12 sm:h-14 w-auto object-contain" />
+          <img src="/logo.png" alt="Sneaks & Socks Club" className="h-9 sm:h-14 w-auto object-contain" />
         </Link>
-        <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-gray-400 flex-1">
+        <nav className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px] sm:text-sm text-gray-400 flex-1">
           <Link to="/legal/impressum" className="hover:text-red-400 transition">Impressum</Link>
           <Link to="/legal/datenschutz" className="hover:text-red-400 transition">Datenschutz</Link>
           <Link to="/legal/cookies" className="hover:text-red-400 transition">Cookies</Link>
@@ -4005,7 +4018,7 @@ export default function App() {
                 <div className="flex flex-col min-h-screen">
                   <Navbar />
                   <VerifyEmailBanner />
-                  <main className="flex-1 pb-40 sm:pb-28">
+                  <main className="flex-1 pb-48 sm:pb-32">
                     <Routes>
                       <Route path="/" element={<HomePage />} />
                       <Route path="/create-post" element={<CreatePostPage />} />

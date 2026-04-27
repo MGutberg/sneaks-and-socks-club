@@ -16,7 +16,12 @@ const webpush = require('web-push');
 const app = express();
 app.set('trust proxy', true);
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'sneaks-and-socks-club-secret-key-2024';
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  console.error('FATAL: JWT_SECRET environment variable is required and must be at least 32 characters.');
+  console.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
 const buildLink = (req, path) => {

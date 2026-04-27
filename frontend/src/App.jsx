@@ -9,12 +9,14 @@ const getApiUrl = () => {
 const API_URL = getApiUrl();
 const getImageUrl = (path) => path ? (path.startsWith('http') ? path : `${API_URL}${path.startsWith('/') ? '' : '/'}${path}`) : null;
 
-const COMMON_TLD_TYPOS = { coom: 'com', con: 'com', cmo: 'com', comm: 'com', ogr: 'org', ney: 'net' };
+const COMMON_TLD_TYPOS = { coom: 'com', con: 'com', cmo: 'com', cmm: 'com', ogr: 'org', ney: 'net' };
 const COMMON_DOMAIN_TYPOS = {
   'gmial.com': 'gmail.com', 'gmal.com': 'gmail.com', 'gnail.com': 'gmail.com', 'gmail.con': 'gmail.com',
   'hotmial.com': 'hotmail.com', 'hotmai.com': 'hotmail.com', 'yhoo.com': 'yahoo.com', 'yahooo.com': 'yahoo.com',
   'web.com': 'web.de', 'gmx.com': 'gmx.de', 'outlook.con': 'outlook.com',
 };
+// Real TLDs we want to detect collapsed typos against (e.g. .deee → .de, .commm → .com)
+const TLD_COLLAPSE_TARGETS = new Set(['com','de','net','org','eu','co','fr','it','es','uk','us','at','ch','nl','pl','be','dk','se','fi','no','ie']);
 function validateEmail(email) {
   const v = (email || '').trim();
   if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v)) return { valid: false, error: 'Bitte eine gültige Email-Adresse eingeben.' };
@@ -22,6 +24,11 @@ function validateEmail(email) {
   if (COMMON_DOMAIN_TYPOS[domain]) return { valid: false, error: `Meintest du "${COMMON_DOMAIN_TYPOS[domain]}"?` };
   const tld = domain.split('.').pop();
   if (COMMON_TLD_TYPOS[tld]) return { valid: false, error: `Meintest du ".${COMMON_TLD_TYPOS[tld]}" statt ".${tld}"?` };
+  // Heuristik: TLD mit mehrfach wiederholtem Endbuchstaben (z.B. .deee → .de, .commm → .com)
+  const collapsed = tld.replace(/(.)\1+$/, '$1');
+  if (collapsed !== tld && TLD_COLLAPSE_TARGETS.has(collapsed)) {
+    return { valid: false, error: `Meintest du ".${collapsed}" statt ".${tld}"?` };
+  }
   return { valid: true };
 }
 

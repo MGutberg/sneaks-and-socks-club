@@ -1,3 +1,10 @@
+// Pass-through fetch handler — required for Chrome PWA install prompt eligibility.
+// We deliberately don't cache here (network-first, no offline mode).
+self.addEventListener('fetch', () => { /* no-op, browser handles normally */ });
+
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+
 self.addEventListener('push', (event) => {
   let data = { title: 'Sneaks & Socks Club', body: 'Neue Aktivität', url: '/' };
   try { data = { ...data, ...event.data.json() }; } catch (e) {}

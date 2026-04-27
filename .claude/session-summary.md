@@ -1,6 +1,6 @@
 # Sneaks & Socks Club - Session Summary
-**Datum:** 2026-04-16
-**Letzter Commit:** d7c921a
+**Datum:** 2026-04-27
+**Letzter Commit:** 157bb0a
 
 ## Projekt-Übersicht
 Social Media Plattform für Sneaker- und Socken-Enthusiasten.
@@ -280,10 +280,23 @@ cd sneaks-and-socks-club
 cd frontend && cp .env.example .env && npm install
 cd ../backend && npm install
 # Terminal 1:
-cd backend && node server.js
+cd backend && node --env-file=.env server.js
 # Terminal 2:
 cd frontend && npm run dev
 ```
+Backend nutzt seit Node 20+ natives `--env-file=.env` (kein `dotenv`-Paket nötig).
+`backend/.env` ist gitignored — Pflichtfelder: `JWT_SECRET` (≥32 Chars), optional SMTP_*/VAPID_*.
+
+## WSL-Dev-Setup (Windows)
+- Repo nach `~/projects/sneaks-and-socks-club` clonen (NICHT `/mnt/c/…` — File-I/O 5–20× langsamer, Vite-HMR unzuverlässig)
+- `~/start-sneaks.sh` startet Backend + Frontend per `setsid nohup` (übersteht WSL-Session-Ende), Logs in `/tmp/{backend,frontend}.log`
+- `~/stop-sneaks.sh` killt beide Prozesse + esbuild-Helper sauber
+- Cloudflare Tunnel für externen Test:
+  ```bash
+  cloudflared tunnel --url http://localhost:3000
+  ```
+  → wirft `https://*.trycloudflare.com`-URL aus (flüchtig, ändert sich bei jedem Restart)
+- Vite akzeptiert Tunnel-Hosts via `server.allowedHosts: ['.trycloudflare.com', 'localhost']` in `vite.config.js`
 
 ### 18. Profil-Statistiken
 - `/api/users/:id/stats`: posts, followers, following, erhaltene Likes/Kommentare/Reaktionen, Forum-Topics/Replies, Profilaufrufe, member_since
@@ -360,6 +373,48 @@ cd frontend && npm run dev
 - `DELETE /api/admin/users/:id` in Transaction mit `safe()` Helper
 - Bereinigt alle 24+ Tabellen inkl. Kaskaden (listing_images, group posts, etc.)
 
+### 31. Request-Origin-basierte Mail-Links
+- Neuer `buildLink(req, path)` Helper im Backend (`server.js`)
+- Reihenfolge: `req.get('origin')` → `${req.protocol}://${req.get('host')}` → `APP_URL`-Fallback
+- `app.set('trust proxy', true)` damit Express X-Forwarded-Host/Proto vom Nginx ehrt
+- Verwendet in: `/api/auth/register`, `/api/auth/resend-verification`, `/api/auth/forgot-password`
+- Vorteil: Reset-/Verify-Mails zeigen automatisch auf die jeweilige URL (localhost, Tunnel, Live) — kein Per-Env-`APP_URL` mehr nötig
+
+### 32. JWT_SECRET als Pflicht-Env-Variable
+- Hardcoded Default `'sneaks-and-socks-club-secret-key-2024'` entfernt (war im public Repo → JWT-Forgery möglich)
+- Backend crasht beim Start, wenn `JWT_SECRET` fehlt oder < 32 Zeichen
+- Live-Deploy benötigt `JWT_SECRET` in `ecosystem.config.cjs`
+- Achtung: Secret-Änderung invalidiert alle aktiven JWT-Sessions (gewollt)
+
+### 33. Mobile-Navbar & Footer-Refactor
+- Mobile-Header reduziert auf: Logo + ✉️ Messages + ☰ Hamburger (mit Unread-Badge auf Hamburger = sum(notifs+messages))
+- Bell, Push-Toggle, Theme-Toggle, Saved-Posts: `hidden sm:inline-flex` → nur Desktop
+- Push-Toggle neu im Hamburger-Menü
+- Logo: `flex-shrink-0` + `h-12 sm:h-16` (kann nicht mehr zerquetscht werden)
+- Footer Mobile kompakter: `py-3`, Logo `h-9`, `gap-2`, Nav-Links `text-[11px]`/`gap-x-2.5` (passt auf eine Zeile)
+- Main-Padding: `pb-48 sm:pb-32` (verhindert Footer-Overlap)
+
+### 34. Bug-Fixes
+- `is_admin && <Component>` rendete bei Nicht-Admins die Zahl `0` als Text → `!!user?.is_admin` (Boolean-Coercion)
+- VerifyEmailPage: `useRef`-Guard gegen StrictMode-Doppelaufruf (Token wurde sonst beim 2. Fire bereits konsumiert → fälschliches "❌ Token ungültig")
+
+### 35. Email-Format-Validierung (Frontend)
+- `validateEmail(email)` Helper in App.jsx
+- 3-stufige Prüfung:
+  1. Format-Regex (`user@domain.tld`)
+  2. Explizites Dict für häufige Domain-Tippfehler (`gmial.com` → `gmail.com`, `web.com` → `web.de`, …) und TLD-Tippfehler (`.coom` → `.com`, `.con`, `.cmo`, `.ogr`, `.ney`, …)
+  3. Heuristik: Endbuchstabe mehrfach wiederholt → kollabieren und gegen `TLD_COLLAPSE_TARGETS` prüfen (fängt `.dee`, `.deee`, `.commm`, … ohne explizite Aufzählung)
+- Verwendet in `RegisterPage` (alert) und `ForgotPasswordPage` (inline error state)
+- Trigger: realer Prod-Vorfall mit `deepvoiceinc@gmail.coom` → SMTP-Bounce → Account stuck unverified
+
+### 36. PWA Install (Add-to-Home-Screen)
+- `frontend/public/manifest.json`: name, icons (192/512), `display: standalone`, theme/background color
+- Icons aus `logo.png` (1024x1024) generiert: `icon-192.png`, `icon-512.png`, `icon-180.png` (Apple Touch)
+- `index.html` Meta-Tags: theme-color, apple-mobile-web-app-capable, viewport-fit=cover
+- `sw.js` erweitert: leerer `fetch`-Listener (Chrome-Install-Voraussetzung) + `skipWaiting()` + `clients.claim()` für sofortige Übernahme bei Updates
+- Service-Worker-Registrierung von `usePushNotifications`-Hook (auth-gated) in `main.jsx` (bei jedem Load) verschoben — Chrome braucht das für Install-Eligibility
+- Bekanntes offenes Problem: Chrome auf Honor V5 zeigt nach Cleanup noch keinen Install-Button. Desktop Chrome OK. Vermutung: Chrome-Mobile-State nicht restlos clean. Workaround: Edge oder Firefox Mobile.
+
 ## Domain & HTTPS
 - Domain: `sneaks-socks.club` (+ `www.sneaks-socks.club`)
 - DNS: A-Records bei IONOS → `37.27.209.32`
@@ -404,21 +459,34 @@ VAPID_SUBJECT=mailto:deepvoiceinc@web.de
 - [x] Web Push Notifications (VAPID / Service Worker)
 - [x] Admin User-Deletion Fix (Transaction über alle Tabellen)
 - [x] Domain sneaks-socks.club + HTTPS (Let's Encrypt + Nginx)
+- [x] Request-Origin-basierte Mail-Links (buildLink Helper)
+- [x] JWT_SECRET als Pflicht-Env-Var (Sicherheit)
+- [x] Mobile-Header & Footer kompakt überarbeitet
+- [x] is_admin Boolean-Coercion Fix
+- [x] VerifyEmailPage StrictMode-Fix (useRef-Guard)
+- [x] Email-Tippfehler-Validierung (Frontend)
+- [x] PWA Install Support (manifest, icons, SW lifecycle)
 
 ## Offene Punkte / Ideen für später
-- [ ] Ungelesen-Badge für Notifications
-- [ ] Link-Preview (OpenGraph)
+- [ ] Link-Preview (OpenGraph) für Posts/Mails + dynamische OG-Tags pro Route
 - [ ] Drafts (localStorage)
 - [ ] Keyboard-Shortcuts
 - [ ] Passwort-ändern-Dialog im Profil
 - [ ] Tag-System
-- [ ] Bessere Suche (FTS5)
-- [ ] Blockieren/Stummschalten
+- [ ] Bessere Suche (FTS5 in SQLite)
+- [ ] Blockieren/Stummschalten von Usern
 - [ ] 2FA
+- [ ] Rate-Limiting auf Auth-Endpoints (express-rate-limit)
+- [ ] Multer 1.x → 2.x Upgrade (1.x deprecated, CVEs)
+- [ ] PWA-Install auf Honor V5 Chrome reproduzieren (Desktop OK, Mobile Chrome zeigt nichts)
+- [ ] Notif-Liste auf Mobile sichtbar machen (Bell wurde entfernt → aktuell nur Badge + Push)
+- [ ] iOS-Auto-Zoom-Prevention (`text-base` auf allen Form-Inputs)
+- [ ] App.jsx splitten (4000 Zeilen → Komponenten in eigene Dateien)
+- [ ] TypeScript schrittweise einführen
 - [ ] Video-Uploads
 - [ ] PostgreSQL Migration
 - [ ] S3/MinIO
 - [ ] WebSockets (Realtime Chat)
-- [ ] Mobile App
+- [ ] Mobile App (echte native, nicht nur PWA)
 - [ ] Monetarisierung
 - [ ] KI-Moderation
